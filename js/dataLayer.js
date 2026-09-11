@@ -301,17 +301,21 @@ const DataLayer = {
     return Promise.resolve(visit);
   },
 
-  // ---------- โปรไฟล์ Mer (ชื่อที่แสดง/เบอร์โทร) — แก้ไขได้จากหน้าโปรไฟล์ ----------
+  // ---------- โปรไฟล์ Mer (ชื่อที่แสดง/เบอร์โทร/รูปโปรไฟล์/รหัสผ่าน) — แก้ไขได้จากหน้าโปรไฟล์ ----------
   getMerProfile(merId) {
     const all = readJson(STORAGE_KEYS.MER_PROFILES, {});
     return all[merId] || { displayName: '', phone: '' };
   },
 
-  saveMerProfile(merId, profile) {
+  /** merge เข้ากับโปรไฟล์เดิมเสมอ (ไม่ทับทั้งก้อน) เพราะแต่ละฟอร์ม (ข้อมูลทั่วไป/
+   *  เปลี่ยนรหัสผ่าน/เปลี่ยนรูป) แก้คนละฟิลด์กัน — ถ้า set ทั้งก้อนจะไปลบฟิลด์ที่
+   *  ฟอร์มอื่นเพิ่งบันทึกไว้ */
+  saveMerProfile(merId, partialProfile) {
     const all = readJson(STORAGE_KEYS.MER_PROFILES, {});
-    all[merId] = profile;
+    const existing = all[merId] || { displayName: '', phone: '' };
+    all[merId] = { ...existing, ...partialProfile };
     writeJson(STORAGE_KEYS.MER_PROFILES, all);
-    return Promise.resolve(profile);
+    return Promise.resolve(all[merId]);
   },
 
   /** ชื่อที่ควรแสดงจริง — ใช้ชื่อที่ Mer ตั้งเองถ้ามี ไม่งั้น fallback เป็นชื่อ mock เดิม */
@@ -319,6 +323,14 @@ const DataLayer = {
     const mer = getMerById(merId);
     const profile = this.getMerProfile(merId);
     return (profile.displayName && profile.displayName.trim()) || (mer ? mer.merName : '');
+  },
+
+  /** รหัสผ่านที่ใช้ล็อกอินจริง — ใช้รหัสที่ Mer เปลี่ยนเองถ้ามี ไม่งั้น fallback เป็นค่า mock เดิม */
+  getMerPassword(merId) {
+    const profile = this.getMerProfile(merId);
+    if (profile.password) return profile.password;
+    const mer = getMerById(merId);
+    return mer ? mer.password : null;
   },
 
   /**

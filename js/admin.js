@@ -47,9 +47,25 @@ function getMondayOf(date) {
 const AdminState = {
   merId: MOCK_MERS[0].merId,
   view: 'month', // 'month' | 'week' | 'day'
+  viewManuallySet: false, // true หลังผู้ใช้กดแท็บมุมมองเอง — เลิก auto-switch ตามขนาดจอให้
   currentDate: new Date(), // "จุดอ้างอิง" ของมุมมองปัจจุบัน ปุ่มเปลี่ยนช่วงเวลาจะขยับค่านี้
   modal: null, // { type: 'addBranch' | 'moveBranch' | 'chipAction', ... }
 };
+
+/**
+ * จอมือถือ: มุมมองเดือนแบบ grid 7 คอลัมน์อ่านยาก (ชื่อสาขาถูกตัดสั้นเกินไป)
+ * ให้ auto-switch เป็นมุมมองสัปดาห์ (agenda) แทน — ทำงานทั้งตอนโหลดหน้าครั้งแรก
+ * และตอน resize หน้าต่าง (เช่น ผู้ใช้ย่อหน้าต่างทดสอบโดยไม่ reload) ตราบใดที่
+ * ผู้ใช้ยังไม่เคยกดเลือกมุมมองเอง — ถ้าเลือกเองแล้วจะเคารพตัวเลือกนั้นไม่สลับให้
+ */
+function applyResponsiveViewDefault() {
+  if (AdminState.viewManuallySet) return;
+  const desired = window.innerWidth <= 720 ? 'week' : 'month';
+  if (AdminState.view !== desired) {
+    AdminState.view = desired;
+    renderAdmin();
+  }
+}
 
 function shiftView(delta) {
   const d = new Date(AdminState.currentDate);
@@ -109,6 +125,7 @@ function renderAdminHeader() {
           class: `admin-view-tab ${AdminState.view === v.id ? 'is-active' : ''}`,
           onclick: () => {
             AdminState.view = v.id;
+            AdminState.viewManuallySet = true;
             renderAdmin();
           },
         },
@@ -122,9 +139,14 @@ function renderAdminHeader() {
     { class: 'admin-header' },
     h(
       'div',
-      { class: 'admin-header__brand' },
-      h('h1', {}, '📅 จัดตารางเข้าสาขา'),
-      h('p', {}, 'ตารางเข้าสาขารายวันของแต่ละ Mer — ลากการ์ดเพื่อย้ายวัน หรือแตะการ์ดเพื่อย้าย/ลบ')
+      { class: 'admin-header__brand', style: 'display:flex;align-items:center;gap:12px' },
+      h('a', { href: 'index.html', class: 'admin-nav-btn', style: 'text-decoration:none;display:flex;align-items:center;justify-content:center;flex-shrink:0' }, '←'),
+      h(
+        'div',
+        {},
+        h('h1', {}, '📅 จัดตารางเข้าสาขา'),
+        h('p', {}, 'ตารางเข้าสาขารายวันของแต่ละ Mer — ลากการ์ดเพื่อย้ายวัน หรือแตะการ์ดเพื่อย้าย/ลบ')
+      )
     ),
     h(
       'div',
@@ -396,6 +418,45 @@ function renderMoveBranchModal(m) {
   );
 }
 
+/** รีเซ็ตข้อมูลทดสอบทั้งหมด — เคลียร์ localStorage ตรงๆ เพราะ admin.html ไม่ได้โหลด dataLayer.js */
+function openResetConfirmModal() {
+  AdminState.modal = { type: 'resetConfirm' };
+  renderAdmin();
+}
+
+function renderResetConfirmModal() {
+  return h(
+    'div',
+    { class: 'admin-modal-overlay' },
+    h(
+      'div',
+      { class: 'admin-modal-sheet' },
+      h('div', { class: 'admin-modal-title' }, 'รีเซ็ตข้อมูลทดสอบทั้งหมด?'),
+      h(
+        'p',
+        { class: 'admin-muted' },
+        'จะล้างตารางเข้าสาขาที่ Admin จัดไว้ สถานะสาขาทุกสาขา และงานที่บันทึกไว้ทั้งหมด กลับไปเป็นข้อมูลตั้งต้น — ทำแล้วกู้คืนไม่ได้'
+      ),
+      h(
+        'div',
+        { class: 'admin-btn-row' },
+        h('button', { class: 'admin-btn admin-btn--ghost', onclick: closeAdminModal }, 'ยกเลิก'),
+        h(
+          'button',
+          {
+            class: 'admin-btn admin-btn--danger',
+            onclick: () => {
+              localStorage.clear();
+              location.reload();
+            },
+          },
+          'รีเซ็ตเลย'
+        )
+      )
+    )
+  );
+}
+
 function renderAdminModal() {
   const root = document.getElementById('admin-modal-root');
   clearNode(root);
@@ -405,6 +466,7 @@ function renderAdminModal() {
     addBranch: renderAddBranchModal,
     moveBranch: renderMoveBranchModal,
     chipAction: renderChipActionModal,
+    resetConfirm: renderResetConfirmModal,
   };
   const node = renderers[m.type] ? renderers[m.type](m) : null;
   if (node) root.appendChild(node);
@@ -422,7 +484,14 @@ function renderAdmin() {
 
 function initAdmin() {
   ScheduleDataLayer.seedDefaultScheduleIfEmpty();
+  if (window.innerWidth <= 720) AdminState.view = 'week';
   renderAdmin();
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(applyResponsiveViewDefault, 150);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', initAdmin);

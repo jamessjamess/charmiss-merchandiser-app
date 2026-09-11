@@ -210,10 +210,8 @@ function renderLoginScreen() {
 
 function handleLoginSubmit() {
   const form = AppState.ui.loginForm;
-  const match = MOCK_MERS.find(
-    (m) => m.username.toLowerCase() === form.username.trim().toLowerCase() && m.password === form.password
-  );
-  if (!match) {
+  const match = MOCK_MERS.find((m) => m.username.toLowerCase() === form.username.trim().toLowerCase());
+  if (!match || DataLayer.getMerPassword(match.merId) !== form.password) {
     form.error = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
     render();
     return;
@@ -254,9 +252,7 @@ function renderStoreCard(store) {
   return h(
     'button',
     { class: 'store-card', onclick: () => handleSelectStore(store) },
-    store.scheduledTime
-      ? h('div', { class: 'store-card__time' }, store.scheduledTime)
-      : h('div', { class: 'store-card__time store-card__time--none' }, '—'),
+    store.scheduledTime ? h('div', { class: 'store-card__time' }, store.scheduledTime) : null,
     h(
       'div',
       { class: 'store-card__body' },
@@ -284,19 +280,13 @@ function renderDailyProgressBar() {
 }
 
 function renderStoreListScreen() {
-  const merId = ScheduleDataLayer.getCurrentMerId();
-
-  const header = h(
-    'div',
-    { class: 'app-header' },
-    h('div', { class: 'app-header__top' }, h('div', { class: 'app-header__title' }, `สวัสดี ${DataLayer.getMerDisplayName(merId)}`)),
-    h('div', { id: 'live-clock', class: 'muted', style: 'font-weight:700' }),
-    h('div', { class: 'muted' }, 'รายชื่อสาขาที่ต้องเข้าเยี่ยมวันนี้')
-  );
+  const header = h('div', { class: 'app-header' }, h('div', { class: 'app-header__top' }, h('div', { class: 'app-header__title' }, 'งานที่ต้องทำ')));
 
   const content = h('div', { class: 'screen screen--with-nav' });
   const progressBar = renderDailyProgressBar();
   if (progressBar) content.appendChild(progressBar);
+
+  content.appendChild(h('p', { class: 'muted', style: 'margin:14px 0 10px' }, 'รายชื่อสาขาที่ต้องเข้าเยี่ยมวันนี้'));
 
   const listContainer = h('div', { style: 'display:flex;flex-direction:column;gap:10px' }, h('p', { class: 'muted' }, 'กำลังโหลดรายชื่อสาขา...'));
   content.appendChild(listContainer);
@@ -365,6 +355,7 @@ function renderProfileScreen() {
   const mer = getMerById(merId);
   const savedProfile = DataLayer.getMerProfile(merId);
   const form = { displayName: savedProfile.displayName || (mer ? mer.merName : ''), phone: savedProfile.phone || '' };
+  const pwForm = { current: '', next: '', confirm: '' };
 
   const header = h(
     'div',
@@ -373,35 +364,109 @@ function renderProfileScreen() {
     h('div', { class: 'muted' }, `เข้าสู่ระบบด้วย username: ${mer ? mer.username : '-'}`)
   );
 
+  const photoInput = h('input', {
+    type: 'file',
+    accept: 'image/*',
+    style: 'display:none',
+    onchange: (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      ImageUtils.fileToDataUrl(file).then((url) => {
+        DataLayer.saveMerProfile(merId, { photoDataUrl: url }).then(() => render());
+      });
+    },
+  });
+
+  const avatarBlock = h(
+    'div',
+    { class: 'card center-text' },
+    savedProfile.photoDataUrl ? h('img', { class: 'profile-avatar', src: savedProfile.photoDataUrl }) : h('div', { class: 'big-icon' }, '👤'),
+    h('h2', { style: 'margin:6px 0 0' }, mer ? mer.merName : ''),
+    h('label', { class: 'btn-sm btn-outline', style: 'width:auto;display:inline-block;margin-top:10px;cursor:pointer' }, '📷 เปลี่ยนรูปโปรไฟล์', photoInput)
+  );
+
   const savedMsgBox = h('div', {});
+
+  const generalCard = h(
+    'div',
+    { class: 'card' },
+    h('label', { class: 'field-label' }, 'ชื่อที่แสดง'),
+    h('input', { type: 'text', value: form.displayName, oninput: (e) => { form.displayName = e.target.value; } }),
+    h('label', { class: 'field-label', style: 'margin-top:10px' }, 'เบอร์โทรติดต่อ (ไม่บังคับ)'),
+    h('input', { type: 'text', placeholder: '08X-XXX-XXXX', value: form.phone, oninput: (e) => { form.phone = e.target.value; } }),
+    savedMsgBox,
+    h(
+      'button',
+      {
+        class: 'btn btn-primary',
+        style: 'margin-top:12px',
+        onclick: () => {
+          DataLayer.saveMerProfile(merId, { displayName: form.displayName.trim(), phone: form.phone.trim() });
+          clearNode(savedMsgBox);
+          savedMsgBox.appendChild(h('div', { class: 'info-box', style: 'margin-top:10px' }, '✓ บันทึกโปรไฟล์แล้ว'));
+        },
+      },
+      'บันทึก'
+    )
+  );
+
+  const pwMsgBox = h('div', {});
+  const currentPwInput = h('input', { type: 'password', placeholder: 'รหัสผ่านเดิม', oninput: (e) => { pwForm.current = e.target.value; } });
+  const nextPwInput = h('input', { type: 'password', placeholder: 'รหัสผ่านใหม่', oninput: (e) => { pwForm.next = e.target.value; } });
+  const confirmPwInput = h('input', { type: 'password', placeholder: 'ยืนยันรหัสผ่านใหม่', oninput: (e) => { pwForm.confirm = e.target.value; } });
+
+  const passwordCard = h(
+    'div',
+    { class: 'card' },
+    h('div', { class: 'section-title' }, 'เปลี่ยนรหัสผ่าน'),
+    h('label', { class: 'field-label', style: 'margin-top:6px' }, 'รหัสผ่านเดิม'),
+    currentPwInput,
+    h('label', { class: 'field-label', style: 'margin-top:10px' }, 'รหัสผ่านใหม่'),
+    nextPwInput,
+    h('label', { class: 'field-label', style: 'margin-top:10px' }, 'ยืนยันรหัสผ่านใหม่'),
+    confirmPwInput,
+    pwMsgBox,
+    h(
+      'button',
+      {
+        class: 'btn btn-primary',
+        style: 'margin-top:12px',
+        onclick: () => {
+          clearNode(pwMsgBox);
+          if (pwForm.current !== DataLayer.getMerPassword(merId)) {
+            pwMsgBox.appendChild(h('div', { class: 'error-box' }, 'รหัสผ่านเดิมไม่ถูกต้อง'));
+            return;
+          }
+          if (!pwForm.next || pwForm.next.length < 4) {
+            pwMsgBox.appendChild(h('div', { class: 'error-box' }, 'รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร'));
+            return;
+          }
+          if (pwForm.next !== pwForm.confirm) {
+            pwMsgBox.appendChild(h('div', { class: 'error-box' }, 'ยืนยันรหัสผ่านใหม่ไม่ตรงกัน'));
+            return;
+          }
+          DataLayer.saveMerProfile(merId, { password: pwForm.next });
+          pwForm.current = '';
+          pwForm.next = '';
+          pwForm.confirm = '';
+          currentPwInput.value = '';
+          nextPwInput.value = '';
+          confirmPwInput.value = '';
+          pwMsgBox.appendChild(h('div', { class: 'info-box' }, '✓ เปลี่ยนรหัสผ่านแล้ว'));
+        },
+      },
+      'เปลี่ยนรหัสผ่าน'
+    )
+  );
 
   const content = h(
     'div',
     { class: 'screen screen--with-nav' },
-    h('div', { class: 'card center-text' }, h('div', { class: 'big-icon' }, '👤'), h('h2', { style: 'margin:6px 0 0' }, mer ? mer.merName : '')),
-    h(
-      'div',
-      { class: 'card' },
-      h('label', { class: 'field-label' }, 'ชื่อที่แสดง'),
-      h('input', { type: 'text', value: form.displayName, oninput: (e) => { form.displayName = e.target.value; } }),
-      h('label', { class: 'field-label', style: 'margin-top:10px' }, 'เบอร์โทรติดต่อ (ไม่บังคับ)'),
-      h('input', { type: 'text', placeholder: '08X-XXX-XXXX', value: form.phone, oninput: (e) => { form.phone = e.target.value; } }),
-      savedMsgBox,
-      h(
-        'button',
-        {
-          class: 'btn btn-primary',
-          style: 'margin-top:12px',
-          onclick: () => {
-            DataLayer.saveMerProfile(merId, { displayName: form.displayName.trim(), phone: form.phone.trim() });
-            clearNode(savedMsgBox);
-            savedMsgBox.appendChild(h('div', { class: 'info-box', style: 'margin-top:10px' }, '✓ บันทึกโปรไฟล์แล้ว'));
-          },
-        },
-        'บันทึก'
-      )
-    ),
-    h('button', { class: 'btn btn-ghost', onclick: handleLogout }, 'ออกจากระบบ')
+    avatarBlock,
+    generalCard,
+    passwordCard,
+    h('button', { class: 'btn btn-ghost', onclick: handleLogout }, 'ออกจากระบบ'),
+    h('button', { class: 'btn btn-danger', style: 'margin-top:8px', onclick: openResetConfirmModal }, '🔄 รีเซ็ตข้อมูล Demo')
   );
 
   return h('div', {}, header, content, renderBottomNav('PROFILE'));
