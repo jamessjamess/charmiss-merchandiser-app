@@ -60,6 +60,7 @@ const AppState = {
   ui: {
     checkinLoading: false,
     checkinPhoto: null, // ภาพหน้าสาขา (ภายนอก) ที่ถ่ายไว้ก่อนกดเช็คอิน — ยังไม่มี visit ให้เก็บตอนนี้
+    checkoutPhoto: null, // ภาพเซลฟี่คู่กับหน้าร้าน ที่ถ่ายไว้ก่อนกดเช็คเอาท์ (บังคับ)
     loginForm: { username: '', password: '', error: '' },
     modal: null, // descriptor ของ modal ที่เปิดอยู่ (ดูหัวข้อ 9)
     stockCountSku: null, // SKU ที่กำลังโฟกัสอยู่ในหน้า "นับสต๊อก & PR" (เลือกจาก scan/ค้นหา หรือกด chip)
@@ -169,11 +170,11 @@ function renderCheckRow({ label, sub, checked, onToggle, satisfied, required = t
   );
 }
 
-function renderCameraButton(onCapture, label) {
+function renderCameraButton(onCapture, label, facingMode) {
   const input = h('input', {
     type: 'file',
     accept: 'image/*',
-    capture: 'environment',
+    capture: facingMode || 'environment',
     style: 'display:none',
     onchange: (e) => {
       const file = e.target.files[0];
@@ -573,8 +574,8 @@ function renderPrListRow(pr) {
     h(
       'div',
       { style: 'min-width:0' },
-      h('div', { style: 'font-weight:800;font-size:16px' }, pr.prNumber),
-      h('div', { class: 'muted', style: 'font-size:13px;margin-top:2px' }, `${pr.storeName} · ${formatVisitCode(pr)}`),
+      h('div', { style: 'font-weight:800;font-size:16px' }, pr.storeName),
+      h('div', { class: 'muted', style: 'font-size:13px;margin-top:2px' }, `${pr.prNumber} · ${formatVisitCode(pr)}`),
       h('div', { class: 'muted', style: 'font-size:13px' }, `${pr.items.length} SKU · ${totalQty} ชิ้น`)
     ),
     h(
@@ -1126,6 +1127,15 @@ function renderStepStockCount() {
   const planogram = getPlanogramForStore(v.storeId);
   const locked = sc.prCreated || sc.prSkipped;
 
+  // เผื่อ Planogram มี SKU ใหม่เพิ่มเข้ามาทีหลัง (เช่นเพิ่มสินค้าใหม่เข้าระบบ)
+  // หลังจาก visit นี้ถูกสร้างไปแล้ว sc.counts อาจไม่มี entry ของ SKU นั้น — สร้าง
+  // ค่าเริ่มต้นให้ก่อนเสมอ กัน error ตอนอ่าน sc.counts[sku] ที่อื่นในฟังก์ชันนี้
+  planogram.forEach((item) => {
+    if (!sc.counts[item.sku]) {
+      sc.counts[item.sku] = { good: 0, damaged: 0, testerGood: 0, testerDamaged: 0, requestedQty: null, counted: false };
+    }
+  });
+
   // สร้าง/ข้าม PR ไปแล้ว = ล็อกถาวร — โชว์สรุปอย่างเดียว ไม่มีช่องค้นหา/ปุ่ม
   // แก้ไขใดๆ หลงเหลือให้กด เพราะปุ่มที่ยัง "ดูเหมือนกดได้" แต่ disabled อยู่ข้างใน
   // ทำให้เข้าใจผิดว่าเสีย/ใช้งานไม่ได้ (ตัดปัญหานี้ตั้งแต่ต้นทาง)
@@ -1578,7 +1588,9 @@ function renderStep2Product() {
     })
   );
   p.restockIssues.forEach((f, idx) => {
-    const typeLabel = f.type === 'shelf_full' ? 'ชั้นวางไม่พอ' : 'ไม่มีของให้เติม/ของหมด';
+    // เดิมมี type 'shelf_full' ด้วย แต่ย้ายไปเป็น Phase 3 Note "บันทึกปัญหาร้าน"
+    // แทนแล้ว (เก็บ label ไว้แสดงเผื่อ visit เก่าที่ยังมี type นี้ค้างอยู่)
+    const typeLabel = f.type === 'shelf_full' ? 'ชั้นวางไม่พอ' : 'ของหมด';
     restockCard.appendChild(
       h(
         'div',
@@ -1600,7 +1612,7 @@ function renderStep2Product() {
       )
     );
   });
-  restockCard.appendChild(h('button', { class: 'btn btn-outline btn-sm', onclick: openRestockIssueModal }, '+ แจ้งปัญหาการเติมสินค้า'));
+  restockCard.appendChild(h('button', { class: 'btn btn-primary btn-sm', onclick: openRestockOutOfStockModal }, '📷 สแกนแจ้งของหมด'));
 
   // ---------- 2.2 เช็ควันหมดอายุของที่วางอยู่ และเรียงไว้ตาม FIFO ----------
   const fifoCard = h(
@@ -2059,10 +2071,22 @@ function renderStepConfirmMain() {
 // ============================================================================
 
 const PHASE3_TAGS = [
-  { id: 'traffic', label: 'เช็ค Traffic ร้านค้า', placeholder: 'เช็คเพื่อตรวจสอบว่าเข้าเยอะไหม ปัจจุบันใช้เผื่ออนาคตขยายสาขา' },
-  { id: 'competitor', label: 'ตรวจสอบคู่แข่ง', placeholder: 'เช่น โปรโมชั่นหรือของแถมใหม่ สินค้าหรือเฉดสีใหม่ พื้นที่ขายที่คู่แข่งได้เพิ่มขึ้น ราคาที่ผิดสังเกต' },
-  { id: 'store_issue', label: 'บันทึกปัญหาร้าน', placeholder: 'เช่น ปัญหาหน้างานที่ไม่มีในหมวด checklist พื้นที่ขายของเราเองที่ถูกลดลง หรือถูกย้าย' },
-  { id: 'other', label: 'เรื่องอื่นๆ', placeholder: 'พิมพ์รายละเอียดที่ต้องการบันทึก...' },
+  {
+    id: 'traffic',
+    label: 'เช็ค Traffic ร้านค้า',
+    desc: 'สังเกตว่าลูกค้าเข้าร้านเยอะไหม ช่วงเวลาไหนคนเยอะ ใช้เป็นข้อมูลเผื่อพิจารณาขยายสาขาในอนาคต',
+  },
+  {
+    id: 'competitor',
+    label: 'ตรวจสอบคู่แข่ง',
+    desc: 'เช่น โปรโมชั่นหรือของแถมใหม่ สินค้าหรือเฉดสีใหม่ พื้นที่ขายที่คู่แข่งได้เพิ่มขึ้น ราคาที่ผิดสังเกต',
+  },
+  {
+    id: 'store_issue',
+    label: 'บันทึกปัญหาร้าน',
+    desc: 'มีปัญหา/การเปลี่ยนแปลงอะไรไหม เช่น ชั้นวางไม่พอ ชั้นวางถูกย้าย ขนาดชั้นวางลดลง/เพิ่มขึ้น หรือปัญหาหน้างานอื่นที่ไม่มีในหมวด Checklist',
+  },
+  { id: 'other', label: 'เรื่องอื่นๆ', desc: 'เรื่องอื่นที่ไม่เข้าหมวดไหนด้านบน' },
 ];
 
 function renderPhase3Screen() {
@@ -2089,7 +2113,8 @@ function renderPhase3Screen() {
             render();
           },
         },
-        tag.label
+        h('div', {}, tag.label),
+        h('div', { class: 'tag-btn__desc' }, tag.desc)
       )
     );
   });
@@ -2153,7 +2178,7 @@ function renderPhase3Screen() {
       { class: 'card' },
       h('label', { class: 'field-label' }, `รายละเอียด — ${currentTag.label}`),
       h('textarea', {
-        placeholder: currentTag.placeholder,
+        placeholder: currentTag.desc,
         oninput: (e) => {
           draft.text = e.target.value;
         },
@@ -2305,15 +2330,41 @@ function renderPhase4Screen() {
           h('div', { class: 'summary-block__title' }, '📊 นับสต๊อก & PR'),
           !AppState.readOnly ? editBtn(() => jumpToPhase2Step('stockCount')) : null
         ),
-        planogram.map((item) => {
-          const c = sc.counts[item.sku] || { good: 0, damaged: 0, testerGood: 0, testerDamaged: 0 };
-          return h(
-            'div',
-            { class: 'summary-row' },
-            h('span', {}, getSkuName(item.sku)),
-            h('strong', {}, `ดี ${c.good} / ชำรุด ${c.damaged} / Tester ดี ${c.testerGood} / Tester ชำรุด ${c.testerDamaged}`)
-          );
-        }),
+        h(
+          'div',
+          { style: 'overflow-x:auto' },
+          h(
+            'table',
+            { class: 'stock-table' },
+            h(
+              'thead',
+              {},
+              h(
+                'tr',
+                {},
+                h('th', {}, 'สินค้า'),
+                h('th', {}, 'ดี'),
+                h('th', {}, 'ชำรุด'),
+                h('th', {}, 'Tester')
+              )
+            ),
+            h(
+              'tbody',
+              {},
+              planogram.map((item) => {
+                const c = sc.counts[item.sku] || { good: 0, damaged: 0, testerGood: 0, testerDamaged: 0 };
+                return h(
+                  'tr',
+                  {},
+                  h('td', {}, getSkuName(item.sku)),
+                  h('td', {}, String(c.good)),
+                  h('td', {}, String(c.damaged)),
+                  h('td', {}, `${c.testerGood}/${c.testerDamaged}`)
+                );
+              })
+            )
+          )
+        ),
         sc.prCreated
           ? h('div', { class: 'info-box', style: 'margin-top:8px' }, `✓ สร้าง PR แล้ว — เลขที่ ${sc.prNumber}`)
           : sc.prSkipped
@@ -2340,7 +2391,14 @@ function renderPhase4Screen() {
       v.product.belowThresholdIssues.map((f) =>
         h('div', { class: 'flag-note' }, `⚑ ${getSkuName(f.sku)}${f.expired ? ' — ดึงออกแล้ว ต้องแจ้งร้านเปิด CN' : ' — อายุต่ำกว่าเกณฑ์'}`)
       ),
-      v.product.priceIssues.map((f) => h('div', { class: 'flag-note' }, `⚑ ราคาไม่ตรง — ${getSkuName(f.sku)} พบราคา ${f.foundPrice} บาท`)),
+      v.product.priceIssues.map((f) =>
+        h(
+          'div',
+          { class: 'flag-note' },
+          `⚑ ราคาไม่ตรง — ${getSkuName(f.sku)} พบราคา ${f.foundPrice} บาท`,
+          f.note ? ` (${f.note})` : ''
+        )
+      ),
       h('div', { class: 'photo-grid', style: 'margin-top:8px' }, v.product.shelfPhotos.map((photo) => h('div', { class: 'photo-thumb' }, h('img', { src: photo }))))
     )
   );
@@ -2485,7 +2543,7 @@ function doSubmitVisit() {
   });
 }
 
-// --- Checkout (optional) ---
+// --- Checkout (บังคับ ต้องถ่าย Selfie คู่กับหน้าร้านก่อนจึงจะปิดงานได้) ---
 function renderCheckoutScreen() {
   const v = AppState.visit;
   const header = renderVisitHeader({ phase: 4, onBack: null, title: v.storeName });
@@ -2512,11 +2570,62 @@ function renderCheckoutScreen() {
         h('div', { class: 'summary-row' }, h('span', {}, 'ระยะเวลาที่ใช้ในสาขา'), h('strong', {}, `${v.checkOut.durationMinutes} นาที`))
       )
     );
+    if (v.checkoutPhoto) {
+      content.appendChild(
+        h('div', { class: 'photo-grid' }, h('div', { class: 'photo-thumb' }, h('img', { src: v.checkoutPhoto })))
+      );
+    }
     content.appendChild(h('button', { class: 'btn btn-primary', onclick: backToStoreList }, 'กลับหน้ารายชื่อสาขา'));
   } else {
-    content.appendChild(h('p', { class: 'section-hint' }, 'เช็คเอาท์ (ไม่บังคับ) เพื่อบันทึกเวลาออกและระยะเวลาที่ใช้ในสาขานี้'));
-    content.appendChild(h('button', { class: 'btn btn-outline', onclick: handleCheckout }, '📍 เช็คเอาท์'));
-    content.appendChild(h('button', { class: 'btn btn-ghost', onclick: backToStoreList }, 'ข้าม / กลับหน้ารายชื่อสาขา'));
+    const hasPhoto = !!AppState.ui.checkoutPhoto;
+    content.appendChild(
+      h(
+        'div',
+        { class: 'card' },
+        h('div', { class: 'section-title', style: 'margin-top:0' }, '🤳 ถ่ายภาพเซลฟี่คู่กับหน้าร้าน'),
+        h('p', { class: 'section-hint' }, 'ใช้เป็นหลักฐานยืนยันว่าอยู่หน้าร้านจริงจนจบงาน (บังคับก่อนเช็คเอาท์)'),
+        hasPhoto
+          ? h(
+              'div',
+              { class: 'photo-grid' },
+              h(
+                'div',
+                { class: 'photo-thumb' },
+                h('img', { src: AppState.ui.checkoutPhoto }),
+                h(
+                  'button',
+                  {
+                    class: 'photo-thumb__remove',
+                    onclick: () => {
+                      AppState.ui.checkoutPhoto = null;
+                      render();
+                    },
+                  },
+                  '✕'
+                )
+              )
+            )
+          : h(
+              'div',
+              { class: 'photo-grid' },
+              renderCameraButton(
+                (dataUrl) => {
+                  AppState.ui.checkoutPhoto = dataUrl;
+                  render();
+                },
+                'ถ่ายภาพเซลฟี่',
+                'user'
+              )
+            )
+      )
+    );
+    content.appendChild(h('p', { class: 'section-hint' }, 'เช็คเอาท์ (บังคับ) เพื่อบันทึกเวลาออกและระยะเวลาที่ใช้ในสาขานี้ ก่อนออกจากร้าน'));
+    content.appendChild(
+      h('button', { class: 'btn btn-primary', disabled: !hasPhoto, onclick: handleCheckout }, '📍 เช็คเอาท์')
+    );
+    if (!hasPhoto) {
+      content.appendChild(h('p', { class: 'muted center-text' }, 'ต้องถ่ายภาพเซลฟี่คู่กับหน้าร้านก่อนจึงจะเช็คเอาท์ได้'));
+    }
   }
 
   return h('div', {}, header, content);
@@ -2531,6 +2640,7 @@ function backToStoreList() {
 }
 
 function handleCheckout() {
+  if (!AppState.ui.checkoutPhoto) return;
   const v = AppState.visit;
   GeoUtils.getCurrentPosition()
     .then((pos) => finishCheckout(v, pos.lat, pos.lng))
@@ -2542,7 +2652,9 @@ function finishCheckout(v, lat, lng) {
   const checkInTime = v.checkIn ? new Date(v.checkIn.timestamp) : now;
   const durationMinutes = Math.max(0, Math.round((now - checkInTime) / 60000));
   v.checkOut = { timestamp: now.toISOString(), gpsLat: lat, gpsLng: lng, durationMinutes };
+  v.checkoutPhoto = AppState.ui.checkoutPhoto;
   DataLayer.saveVisit(v);
+  AppState.ui.checkoutPhoto = null;
   render();
 }
 
@@ -2562,7 +2674,7 @@ function renderModal() {
   if (!m) return;
   const renderers = {
     manualCheckin: renderManualCheckinModal,
-    restockIssue: renderRestockIssueModal,
+    restockOutOfStock: renderRestockOutOfStockModal,
     belowThreshold: renderBelowThresholdModal,
     testerEmpty: renderTesterEmptyModal,
     testerFlag: renderTesterFlagModal,
@@ -2678,60 +2790,95 @@ function renderSkuScanRow(m) {
   );
 }
 
-function openRestockIssueModal() {
-  AppState.ui.modal = { type: 'restockIssue', restockType: 'no_stock', selectedSku: SKU_CATALOG[0].sku };
+/**
+ * เดิมมีตัวเลือกประเภทปัญหา 2 แบบ (ของหมด / ชั้นวางไม่พอ) รวมกันในโมดัลเดียว —
+ * ตัด "ชั้นวางไม่พอ" ออกจากที่นี่ (ย้ายไปบันทึกเป็น Phase 3 Note หมวด "บันทึก
+ * ปัญหาร้าน" แทน เพราะเป็นปัญหาระดับพื้นที่/Layout ไม่ใช่ต่อ SKU) เหลือแค่
+ * "ของหมด" อย่างเดียว แล้วออกแบบใหม่ให้เร็วขึ้น: สแกน/พิมพ์แล้วบันทึกทันที
+ * ไม่ต้องเลือก SKU จาก dropdown แล้วกด "+ เพิ่ม" อีกขั้นตอนแบบเดิม
+ */
+function openRestockOutOfStockModal() {
+  AppState.ui.modal = { type: 'restockOutOfStock', searchTerm: '', error: null };
   render();
 }
 
-function renderRestockIssueModal(m) {
+function renderRestockOutOfStockModal(m) {
   const v = AppState.visit;
+
+  const addSku = (sku) => {
+    if (!v.product.restockIssues.some((f) => f.type === 'no_stock' && f.sku === sku)) {
+      v.product.restockIssues.push({ type: 'no_stock', sku });
+      DataLayer.saveVisit(v);
+    }
+  };
+
+  const doSearch = () => {
+    const match = findSkuInList(SKU_CATALOG, m.searchTerm);
+    if (match) {
+      addSku(match.sku);
+      m.searchTerm = '';
+      m.error = null;
+    } else {
+      m.error = 'ไม่พบ SKU/Barcode นี้';
+    }
+    render();
+  };
+
+  const noStockIssues = v.product.restockIssues.filter((f) => f.type === 'no_stock');
+
   return h(
     'div',
     { class: 'modal-overlay' },
     h(
       'div',
       { class: 'modal-sheet' },
-      h('div', { class: 'modal-title' }, 'แจ้งปัญหาการเติมสินค้า'),
-      h('label', { class: 'field-label' }, 'ประเภทปัญหา'),
-      h(
-        'select',
-        { onchange: (e) => { m.restockType = e.target.value; } },
-        h('option', { value: 'no_stock', selected: m.restockType === 'no_stock' }, 'ไม่มีของให้เติม/ของหมด'),
-        h('option', { value: 'shelf_full', selected: m.restockType === 'shelf_full' }, 'ชั้นวางไม่พอ (ของเก่าขายไม่หมด)')
-      ),
-      renderSkuScanRow(m),
-      h('label', { class: 'field-label' }, 'เลือก SKU แล้วกด + เพิ่ม (เพิ่มได้หลายรายการต่อเนื่อง)'),
+      h('div', { class: 'modal-title' }, '📷 สแกนแจ้งของหมด'),
+      h('p', { class: 'muted' }, 'สแกนหรือพิมพ์ค้นหา SKU/Barcode แล้วบันทึกเป็น "ของหมด" ให้ทันที ไม่ต้องกดเพิ่มซ้ำ — ทำต่อเนื่องได้หลายรายการ'),
       h(
         'div',
         { class: 'btn-row' },
-        h(
-          'select',
-          { style: 'flex:1', onchange: (e) => { m.selectedSku = e.target.value; } },
-          SKU_CATALOG.map((s) => h('option', { value: s.sku, selected: s.sku === m.selectedSku }, s.name))
-        ),
+        h('input', {
+          type: 'text',
+          placeholder: 'สแกน/พิมพ์ Barcode หรือ SKU',
+          value: m.searchTerm,
+          oninput: (e) => {
+            m.searchTerm = e.target.value;
+          },
+          onkeydown: (e) => {
+            if (e.key === 'Enter') doSearch();
+          },
+        }),
+        h('button', { class: 'btn btn-outline btn-sm', style: 'width:auto', onclick: doSearch }, '🔍'),
         h(
           'button',
           {
-            class: 'btn btn-primary btn-sm',
+            class: 'btn btn-outline btn-sm',
             style: 'width:auto',
-            onclick: () => {
-              v.product.restockIssues.push({ type: m.restockType, sku: m.selectedSku });
-              DataLayer.saveVisit(v);
-              render();
-            },
+            onclick: () =>
+              openBarcodeScanner((rawValue) => {
+                const match = findSkuInList(SKU_CATALOG, rawValue);
+                if (match) {
+                  addSku(match.sku);
+                  m.error = null;
+                } else {
+                  m.error = `ไม่พบ SKU/Barcode ${rawValue}`;
+                }
+              }),
           },
-          '+ เพิ่ม'
+          '📷'
         )
       ),
-      v.product.restockIssues.length > 0
+      m.error ? h('div', { class: 'error-box', style: 'margin-top:6px' }, m.error) : null,
+      noStockIssues.length > 0
         ? h(
             'div',
-            { style: 'display:flex;flex-direction:column;gap:6px' },
-            v.product.restockIssues.map((f, idx) =>
-              h(
+            { style: 'display:flex;flex-direction:column;gap:6px;margin-top:10px' },
+            noStockIssues.map((f) => {
+              const idx = v.product.restockIssues.indexOf(f);
+              return h(
                 'div',
                 { class: 'flag-note' },
-                h('span', {}, `${f.type === 'shelf_full' ? 'ชั้นวางไม่พอ' : 'ของหมด'} — ${getSkuName(f.sku)}`),
+                h('span', {}, `ของหมด — ${getSkuName(f.sku)}`),
                 h(
                   'button',
                   {
@@ -2745,11 +2892,11 @@ function renderRestockIssueModal(m) {
                   },
                   'ลบ'
                 )
-              )
-            )
+              );
+            })
           )
         : null,
-      h('button', { class: 'btn btn-primary', onclick: closeModal }, 'เสร็จสิ้น')
+      h('button', { class: 'btn btn-primary', style: 'margin-top:12px', onclick: closeModal }, 'เสร็จสิ้น')
     )
   );
 }
@@ -2970,7 +3117,7 @@ function renderTesterFlagModal(m) {
 }
 
 function openPriceFlagModal() {
-  AppState.ui.modal = { type: 'priceFlag', selectedSku: SKU_CATALOG[0].sku, foundPrice: 0 };
+  AppState.ui.modal = { type: 'priceFlag', selectedSku: SKU_CATALOG[0].sku, foundPrice: 0, note: '' };
   render();
 }
 
@@ -2992,15 +3139,24 @@ function renderPriceFlagModal(m) {
       ),
       h('label', { class: 'field-label' }, 'ราคาที่พบหน้าร้าน (บาท)'),
       h('input', { type: 'number', min: '0', placeholder: '0', value: m.foundPrice, oninput: (e) => { m.foundPrice = Number(e.target.value) || 0; } }),
+      h('label', { class: 'field-label' }, 'หมายเหตุ (ไม่บังคับ)'),
+      h('textarea', {
+        placeholder: 'เช่น ป้ายเก่ายังไม่ถอด, Promotion ไม่ตรงที่แจ้ง...',
+        value: m.note,
+        oninput: (e) => {
+          m.note = e.target.value;
+        },
+      }),
       h(
         'button',
         {
           class: 'btn btn-primary btn-sm',
           style: 'margin-top:4px',
           onclick: () => {
-            v.product.priceIssues.push({ sku: m.selectedSku, foundPrice: m.foundPrice });
+            v.product.priceIssues.push({ sku: m.selectedSku, foundPrice: m.foundPrice, note: m.note.trim() });
             DataLayer.saveVisit(v);
             m.foundPrice = 0;
+            m.note = '';
             render();
           },
         },
@@ -3014,7 +3170,12 @@ function renderPriceFlagModal(m) {
               h(
                 'div',
                 { class: 'flag-note' },
-                h('span', {}, `${getSkuName(f.sku)} — พบราคา ${f.foundPrice} บาท`),
+                h(
+                  'div',
+                  {},
+                  h('div', {}, `${getSkuName(f.sku)} — พบราคา ${f.foundPrice} บาท`),
+                  f.note ? h('div', { class: 'muted', style: 'font-size:12px;margin-top:2px' }, f.note) : null
+                ),
                 h(
                   'button',
                   {

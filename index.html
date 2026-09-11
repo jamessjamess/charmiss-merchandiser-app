@@ -4,21 +4,28 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <title>Merchandiser App</title>
-<link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/style.css?v=20260911-3" />
 </head>
 <body>
   <div id="app"></div>
   <div id="modal-root"></div>
 
-  <!-- Shared DOM helper (ใช้ร่วมกับ admin.html) -->
-  <script src="js/dom.js"></script>
+  <!--
+    Cache-busting: query string ?v=... ต่อท้ายทุกไฟล์ — GitHub Pages ไม่ตั้ง
+    cache header กันเบราว์เซอร์แคชไฟล์ JS/CSS เก่าไว้ให้เอง โดยเฉพาะมือถือที่
+    เน็ตช้า (Chrome Android มักใช้ไฟล์แคชแทนโหลดใหม่) พอ Deploy โค้ดใหม่แล้ว
+    "ยังไม่ขึ้น" ทั้งที่ push สำเร็จ ส่วนใหญ่คือเบราว์เซอร์ผู้ใช้แคชไฟล์เก่าไว้
+    ไม่ใช่ Deploy พัง — แก้ไขไฟล์แล้วให้เปลี่ยนเลขนี้ (เช่น เพิ่ม -1 เป็น -2)
+    ทุกครั้งที่จะ Deploy รอบใหม่ เพื่อบังคับให้โหลดไฟล์ใหม่เสมอ
+  -->
+  <script src="js/dom.js?v=20260911-3"></script>
   <!-- Mock data (จะแทนที่ด้วย API จริงในอนาคต) -->
-  <script src="js/mockData.js"></script>
+  <script src="js/mockData.js?v=20260911-3"></script>
   <!-- ตารางเข้าสาขารายวันที่ Admin จัดไว้ (ใช้ร่วมกับ admin.html) -->
-  <script src="js/scheduleDataLayer.js"></script>
+  <script src="js/scheduleDataLayer.js?v=20260911-3"></script>
   <!-- Data access layer: localStorage + GPS + image helpers -->
-  <script src="js/dataLayer.js"></script>
+  <script src="js/dataLayer.js?v=20260911-3"></script>
   <!-- UI / state machine -->
-  <script src="js/app.js"></script>
+  <script src="js/app.js?v=20260911-3"></script>
 </body>
 </html>

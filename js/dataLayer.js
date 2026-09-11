@@ -87,6 +87,7 @@ function createEmptyVisit(storeId, storeName) {
     checkIn: null,
     checkinPhoto: null, // ภาพหน้าสาขา (ภายนอก) ถ่ายตอนเช็คอิน ใช้เป็นหลักฐานว่าอยู่หน้าร้านจริง
     checkOut: null,
+    checkoutPhoto: null, // ภาพเซลฟี่คู่กับหน้าร้าน ถ่ายตอนเช็คเอาท์ (บังคับ) ใช้เป็นหลักฐานว่าอยู่หน้าร้านจริงจนจบงาน
     photosBefore: [],
     // Step 2: จัดการสินค้าที่ชั้นวาง — 5 ขั้นย่อย (2.1-2.4 checklist + 2.5 ถ่ายรูป)
     // ตัด list SKU/par level ออกจาก 2.1 แล้ว (เดิมมี items สำหรับกรอกจำนวนต่อ SKU)

@@ -4,19 +4,19 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Charmiss Merchandiser — Admin: จัดตารางเข้าสาขา</title>
-<link rel="stylesheet" href="css/admin.css" />
+<link rel="stylesheet" href="css/admin.css?v=20260911-3" />
 </head>
 <body>
   <div id="admin-app"></div>
   <div id="admin-modal-root"></div>
 
-  <!-- Shared DOM helper (ใช้ร่วมกับ index.html ฝั่ง Mer) -->
-  <script src="js/dom.js"></script>
+  <!-- Cache-busting: ดูคอมเมนต์อธิบายใน index.html — เปลี่ยนเลข ?v= นี้ทุกครั้งที่ Deploy โค้ดใหม่ -->
+  <script src="js/dom.js?v=20260911-3"></script>
   <!-- Master data: รายชื่อสาขา + รายชื่อ Mer -->
-  <script src="js/mockData.js"></script>
+  <script src="js/mockData.js?v=20260911-3"></script>
   <!-- Schedule data layer: อ่าน/เขียนตารางเข้าสาขารายวัน -->
-  <script src="js/scheduleDataLayer.js"></script>
+  <script src="js/scheduleDataLayer.js?v=20260911-3"></script>
   <!-- Admin UI -->
-  <script src="js/admin.js"></script>
+  <script src="js/admin.js?v=20260911-3"></script>
 </body>
 </html>

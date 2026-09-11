@@ -707,8 +707,8 @@ textarea {
 /* ---------------------------- Tag buttons (Phase 3) ---------------------------- */
 
 .tag-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
@@ -720,13 +720,28 @@ textarea {
   color: var(--color-text);
   font-size: 14px;
   font-weight: 700;
-  padding: 10px;
+  padding: 12px 14px;
   cursor: pointer;
+  text-align: left;
+  display: block;
+  width: 100%;
 }
 
 .tag-btn.is-selected {
   border-color: var(--color-primary);
   background: #eaf2ff;
+  color: var(--color-primary-dark);
+}
+
+.tag-btn__desc {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.tag-btn.is-selected .tag-btn__desc {
   color: var(--color-primary-dark);
 }
 
@@ -797,6 +812,35 @@ textarea {
 .summary-row strong {
   color: var(--color-text);
   font-weight: 600;
+}
+
+.stock-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+}
+
+.stock-table th,
+.stock-table td {
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.stock-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.stock-table td:first-child,
+.stock-table th:first-child {
+  text-align: left;
+}
+
+.stock-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 /* ---------------------------- Modal ---------------------------- */

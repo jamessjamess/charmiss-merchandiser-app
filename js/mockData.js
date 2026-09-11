@@ -82,6 +82,24 @@ MOCK_STORES.forEach((store, idx) => {
   PLANOGRAM[store.storeId] = items;
 });
 
+// สินค้าจริงเพิ่มเติม (Barcode จริงที่ทดสอบสแกนจากมือถือ) — เติมหลัง PLANOGRAM
+// สุ่มแจกจ่ายเสร็จแล้วโดยตั้งใจ (ไม่ให้กระทบ Planogram ของสาขาอื่นที่คำนวณจาก
+// SKU_CATALOG.length ไปแล้วก่อนหน้านี้) ใช้ "Tr Code" (รหัสภายใน 5 หลัก) แทน
+// รูปแบบ SKU00X เดิม เพื่อสมมติให้ใกล้เคียงรหัสสินค้าจริงของหน้าร้านมากขึ้น
+SKU_CATALOG.push(
+  { sku: '10281', name: 'เซรั่มบำรุงผิวหน้า วิตามินซี 30ml', barcode: '8859095816384' },
+  { sku: '10282', name: 'ครีมกันแดด SPF50 PA+++ 50ml', barcode: '8859214800270' },
+  { sku: '10283', name: 'โทนเนอร์น้ำแร่ผสมไนอาซินาไมด์ 150ml', barcode: '8852662200364' }
+);
+
+// เพิ่ม 3 รายการนี้เข้า Planogram ของ Tofu Skincare โดยเฉพาะ เพื่อให้ทดสอบสแกน
+// Barcode จริงในหน้านับสต๊อกได้ทันที — ไม่กระทบ Planogram สาขาอื่น
+PLANOGRAM.BR11.push(
+  { sku: '10281', parLevel: 5 },
+  { sku: '10282', parLevel: 6 },
+  { sku: '10283', parLevel: 4 }
+);
+
 function getSkuName(sku) {
   const found = SKU_CATALOG.find((s) => s.sku === sku);
   return found ? found.name : sku;
