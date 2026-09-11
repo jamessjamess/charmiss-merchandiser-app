@@ -1,0 +1,463 @@
+/* =========================================================================
+   admin.css
+   ปฏิทินจัดตารางเข้าสาขา — ใช้ได้ทั้ง Admin/PIC และ Mer เปิดหน้าเดียวกัน
+   ออกแบบให้เต็มความกว้างจอและใช้งานได้ดีทั้งคอมพิวเตอร์ (มุมมองเดือนแบบ grid)
+   และมือถือ (มุมมองสัปดาห์/วันแบบ agenda เต็มความกว้าง ไม่ต้องเลื่อนแนวนอน)
+   ใช้โทนสี navy/teal เดียวกับ prototype หลักของโปรเจกต์ (v12.2) เพื่อความ
+   ต่อเนื่องของแบรนด์
+   ========================================================================= */
+
+:root {
+  --a-navy: #0d1b2e;
+  --a-navy2: #14283f;
+  --a-teal: #0fa8a5;
+  --a-teal2: #087f7d;
+  --a-teal-bg: #e6f8f6;
+  --a-bg: #eef3f4;
+  --a-card: #ffffff;
+  --a-border: #dce7e7;
+  --a-text: #102033;
+  --a-muted: #6b7a88;
+  --a-warning: #ab6500;
+  --a-warning-bg: #fff2df;
+  --a-danger: #df4c4c;
+  --a-danger-bg: #fdeceb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--a-bg);
+  color: var(--a-text);
+  font-family: 'Segoe UI', 'Noto Sans Thai', 'Sarabun', Tahoma, sans-serif;
+}
+
+.admin-page {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px 20px 60px;
+}
+
+/* ---------------------------- Header ---------------------------- */
+
+.admin-header {
+  background: linear-gradient(180deg, var(--a-navy), var(--a-navy2));
+  color: #fff;
+  border-radius: 18px;
+  padding: 20px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.admin-header__brand h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.admin-header__brand p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #9fc9c6;
+}
+
+.admin-header__controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.admin-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #cfe4e2;
+  font-weight: 700;
+}
+
+.admin-field select {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: #fff;
+  color: var(--a-text);
+}
+
+.admin-view-tabs {
+  display: flex;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.admin-view-tab {
+  border: none;
+  background: transparent;
+  color: #cfe4e2;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.admin-view-tab.is-active {
+  background: var(--a-teal);
+  color: #fff;
+}
+
+.admin-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-nav-btn {
+  min-width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 18px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.admin-nav-btn--today {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.admin-month-label {
+  font-size: 15px;
+  font-weight: 800;
+  min-width: 140px;
+  text-align: center;
+}
+
+/* ---------------------------- Calendar grid (มุมมองเดือน) ---------------------------- */
+
+.cal-wrap {
+  background: var(--a-card);
+  border: 1px solid var(--a-border);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.cal-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cal-row + .cal-row {
+  margin-top: 6px;
+}
+
+.cal-head {
+  margin-bottom: 4px;
+}
+
+.cal-headcell {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--a-muted);
+  text-align: center;
+  padding: 4px 0;
+}
+
+.cal-cell {
+  border: 1px solid var(--a-border);
+  border-radius: 12px;
+  padding: 6px;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fbfdfd;
+  min-width: 0;
+}
+
+.cal-cell--empty {
+  background: transparent;
+  border: none;
+}
+
+.cal-cell--weekend {
+  background: #f4f6f6;
+}
+
+.cal-daynum {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--a-muted);
+}
+
+.cal-daynum--big {
+  font-size: 15px;
+}
+
+.cal-holiday {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--a-muted);
+  font-weight: 700;
+}
+
+.cal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  overflow-y: auto;
+  max-height: 150px;
+}
+
+.cal-chips--big {
+  max-height: none;
+}
+
+.branch-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--a-teal-bg);
+  color: var(--a-teal2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+
+.branch-chip:hover {
+  filter: brightness(0.97);
+}
+
+.branch-chip--big {
+  padding: 12px 14px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+/* สาขาที่มีเงื่อนไขพิเศษ (เช่น Tofu ต้องเข้าช่วงร้านเปิด) ใช้สีต่างจากปกติ
+   ให้สังเกตเห็นชัดตั้งแต่มองผ่านๆ บนปฏิทิน ไม่ต้องรอ hover อ่าน title */
+.branch-chip--special {
+  background: var(--a-warning-bg);
+  color: var(--a-warning);
+  border: 1px solid #ffd88a;
+}
+
+.chip-note-flag {
+  color: var(--a-warning);
+  flex-shrink: 0;
+}
+
+.chip-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-addbtn {
+  border: 1px dashed #98c9c6;
+  background: #f3fbfa;
+  color: var(--a-teal2);
+  border-radius: 8px;
+  padding: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cal-addbtn:hover {
+  background: var(--a-teal-bg);
+}
+
+/* ---------------------------- Agenda (มุมมองสัปดาห์ / วัน) ---------------------------- */
+
+.cal-agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cal-agenda-row {
+  background: var(--a-card);
+  border: 1px solid var(--a-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cal-agenda-row--weekend {
+  background: #f6f9f9;
+}
+
+/* ---------------------------- Legend ---------------------------- */
+
+.admin-legend {
+  margin-top: 18px;
+  background: var(--a-warning-bg);
+  border: 1px solid #ffe0ab;
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.admin-legend__title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--a-warning);
+  margin-bottom: 6px;
+}
+
+.admin-legend__item {
+  font-size: 12px;
+  color: #7b5319;
+  line-height: 1.6;
+}
+
+/* ---------------------------- Modal ---------------------------- */
+
+.admin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 20, 33, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.admin-modal-sheet {
+  width: min(420px, 100%);
+  background: #fff;
+  border-radius: 18px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-modal-title {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.admin-modal-sheet select,
+.admin-modal-sheet input {
+  width: 100%;
+  font-size: 14px;
+  padding: 10px;
+  border-radius: 9px;
+  border: 1px solid var(--a-border);
+}
+
+.admin-muted {
+  font-size: 12px;
+  color: var(--a-muted);
+  margin: 0;
+}
+
+.admin-btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.admin-btn {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-btn--primary {
+  background: var(--a-teal);
+  color: #fff;
+}
+
+.admin-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-btn--danger {
+  background: var(--a-danger-bg);
+  color: var(--a-danger);
+}
+
+.admin-btn--ghost {
+  background: #eef4f4;
+  color: #3a4b5b;
+}
+
+/* ---------------------------- Responsive ---------------------------- */
+
+@media (max-width: 720px) {
+  .admin-page {
+    padding: 12px 12px 40px;
+  }
+
+  .admin-header {
+    padding: 14px 16px;
+    border-radius: 14px;
+  }
+
+  .admin-header__controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .admin-month-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .cal-cell {
+    min-height: 70px;
+    padding: 4px;
+  }
+
+  .cal-daynum {
+    font-size: 11px;
+  }
+
+  .branch-chip {
+    font-size: 10px;
+    padding: 4px 5px;
+  }
+
+  .cal-addbtn {
+    font-size: 10px;
+  }
+}

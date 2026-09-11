@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Merchandiser App</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app"></div>
+  <div id="modal-root"></div>
+
+  <!-- Shared DOM helper (ใช้ร่วมกับ admin.html) -->
+  <script src="js/dom.js"></script>
+  <!-- Mock data (จะแทนที่ด้วย API จริงในอนาคต) -->
+  <script src="js/mockData.js"></script>
+  <!-- ตารางเข้าสาขารายวันที่ Admin จัดไว้ (ใช้ร่วมกับ admin.html) -->
+  <script src="js/scheduleDataLayer.js"></script>
+  <!-- Data access layer: localStorage + GPS + image helpers -->
+  <script src="js/dataLayer.js"></script>
+  <!-- UI / state machine -->
+  <script src="js/app.js"></script>
+</body>
+</html>
