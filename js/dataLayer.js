@@ -275,10 +275,25 @@ const DataLayer = {
     return all[visitId] || null;
   },
 
+  /**
+   * ห่อ try/catch ไว้เพราะเป็นจุดเดียวที่เขียนรูป (base64 ขนาดใหญ่) ลง
+   * localStorage — ถ้าพื้นที่เต็ม (QuotaExceededError) หรือเบราว์เซอร์บล็อก
+   * การเขียน (เช่น โหมดส่วนตัว) ต้องแจ้งผู้ใช้ให้เห็นชัดๆ แทนที่จะปล่อยให้ throw
+   * เงียบๆ ข้างในแล้วทำให้ UI ดูเหมือน "ไม่มีอะไรเกิดขึ้น" (รูปที่เพิ่งถ่ายไม่
+   * ขึ้น ทั้งที่ถ่ายสำเร็จจริง)
+   */
   saveVisit(visit) {
     const all = readJson(STORAGE_KEYS.VISITS, {});
     all[visit.visitId] = visit;
-    writeJson(STORAGE_KEYS.VISITS, all);
+    try {
+      writeJson(STORAGE_KEYS.VISITS, all);
+    } catch (err) {
+      console.error('[DataLayer] บันทึก visit ไม่สำเร็จ', err);
+      alert(
+        'บันทึกไม่สำเร็จ: พื้นที่จัดเก็บข้อมูลในเบราว์เซอร์เต็ม (มักเกิดจากรูปสะสมเยอะ)\n\nลองลบรูปที่ไม่จำเป็นในสาขานี้ออกบางส่วน หรือกด "รีเซ็ตข้อมูลทดสอบ" ในหน้าโปรไฟล์ แล้วลองใหม่'
+      );
+      return Promise.reject(err);
+    }
     return Promise.resolve(visit);
   },
 
@@ -427,11 +442,42 @@ const GeoUtils = {
 // ============================= File/image helper =============================
 
 const ImageUtils = {
-  /** อ่านไฟล์รูปที่ผู้ใช้เลือก/ถ่าย แล้วแปลงเป็น base64 data URL สำหรับ preview + เก็บใน localStorage */
+  /**
+   * อ่านไฟล์รูปที่ผู้ใช้เลือก/ถ่าย แล้วย่อขนาด + บีบอัดก่อนแปลงเป็น base64 data
+   * URL สำหรับ preview + เก็บใน localStorage — จำเป็นมาก เพราะรูปจากกล้อง
+   * มือถือจริง (ต่างจากรูปทดสอบเล็กๆ) มักมีขนาดหลาย MB ต่อรูป ถ้าเก็บดิบๆ ลง
+   * localStorage (โควตาปกติแค่ ~5-10MB ต่อ origin) จะชนโควตาได้ง่ายมากตั้งแต่
+   * รูปแรกๆ ทำให้ `saveVisit` throw แบบเงียบๆ ข้างใน Promise (ไม่มี error โชว์
+   * ให้เห็น) ผลคือรูปที่เพิ่งถ่ายดูเหมือน "หายไป" ทั้งที่ถ่ายสำเร็จแล้วจริงๆ —
+   * ย่อเหลือด้านยาวสุดไม่เกิน 1280px แล้ว re-encode เป็น JPEG คุณภาพ 0.7 ก่อน
+   * เก็บเสมอ ลดขนาดไฟล์ต่อรูปจากหลาย MB เหลือหลักร้อย KB
+   */
   fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const maxSize = 1280;
+          let { width, height } = img;
+          if (width > maxSize || height > maxSize) {
+            if (width > height) {
+              height = Math.round((height * maxSize) / width);
+              width = maxSize;
+            } else {
+              width = Math.round((width * maxSize) / height);
+              height = maxSize;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์รูปนี้ได้'));
+        img.src = reader.result;
+      };
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(file);
     });

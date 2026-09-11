@@ -66,6 +66,7 @@ const AppState = {
     stockCountSearch: '', // ข้อความในช่องสแกน/ค้นหา SKU ของ step เดียวกัน
     stockCountSearchError: null,
     stockCountRevealPr: false, // true หลังกดปุ่ม "สร้าง PR" ครั้งแรก — ถึงจะโชว์รายการแนะนำสั่งซื้อ
+    prReportSelectedId: null, // prId ที่กำลังดูรายละเอียดอยู่ในหน้า "รายงาน PR" — null = ดูเป็นรายการ list ทั้งหมด
   },
   phase3Draft: { tag: null, text: '', photo: null },
 };
@@ -364,6 +365,7 @@ function renderBottomNav(activeScreen) {
               class: `bottom-nav__item ${activeScreen === item.screen ? 'is-active' : ''}`,
               onclick: () => {
                 AppState.screen = item.screen;
+                if (item.screen === 'PR_REPORT') AppState.ui.prReportSelectedId = null; // กลับมาที่แท็บนี้ทีไร เริ่มที่รายการใหญ่เสมอ
                 render();
               },
             },
@@ -506,8 +508,36 @@ function renderProfileScreen() {
 // อนาคตมีสาขาอื่นเพิ่มเข้ามาใช้ Flow นี้ด้วย)
 // ============================================================================
 
+/**
+ * หน้ารายงาน PR แบ่ง 2 ระดับเสมอ: รายการใหญ่ (list แบบย่อ ทีละใบ) ก่อน แล้วค่อย
+ * กด "ดูรายละเอียด" เพื่อดูรายสินค้าเต็ม — ออกแบบไว้ตั้งแต่ต้นเผื่ออนาคตมีหลาย
+ * สาขาเปิด PR พร้อมกัน (ตอนนี้มีแค่ Tofu แต่ถ้าโชว์รายละเอียดเต็มทุกใบพร้อมกัน
+ * จะเป็นรายการยาวมากทันทีที่มี PR หลายใบ ไม่ scale)
+ */
 function renderPrReportScreen() {
-  const header = h('div', { class: 'app-header' }, h('div', { class: 'app-header__top' }, h('div', { class: 'app-header__title' }, 'รายงาน PR')));
+  const selectedId = AppState.ui.prReportSelectedId;
+  const header = h(
+    'div',
+    { class: 'app-header' },
+    h(
+      'div',
+      { class: 'app-header__top' },
+      selectedId
+        ? h(
+            'button',
+            {
+              class: 'app-header__back',
+              onclick: () => {
+                AppState.ui.prReportSelectedId = null;
+                render();
+              },
+            },
+            '←'
+          )
+        : null,
+      h('div', { class: 'app-header__title' }, selectedId ? 'รายละเอียด PR' : 'รายงาน PR')
+    )
+  );
 
   const content = h('div', { class: 'screen screen--with-nav' });
   const listContainer = h('div', { style: 'display:flex;flex-direction:column;gap:10px' }, h('p', { class: 'muted' }, 'กำลังโหลดรายการ PR...'));
@@ -519,10 +549,47 @@ function renderPrReportScreen() {
       listContainer.appendChild(h('div', { class: 'info-box' }, 'ยังไม่มี PR ที่สร้างไว้'));
       return;
     }
-    prs.forEach((pr) => listContainer.appendChild(renderPrCard(pr)));
+    if (selectedId) {
+      const pr = prs.find((p) => p.prId === selectedId);
+      if (!pr) {
+        listContainer.appendChild(h('div', { class: 'info-box' }, 'ไม่พบ PR นี้ (อาจถูกล้างข้อมูลไปแล้ว)'));
+        return;
+      }
+      listContainer.appendChild(renderPrDetailCard(pr));
+    } else {
+      prs.forEach((pr) => listContainer.appendChild(renderPrListRow(pr)));
+    }
   });
 
   return h('div', {}, header, content, renderBottomNav('PR_REPORT'));
+}
+
+/** การ์ดย่อในรายการใหญ่ — เห็นภาพรวมพอไม่ต้องเปิดดูรายละเอียดทุกใบ */
+function renderPrListRow(pr) {
+  const totalQty = pr.items.reduce((sum, i) => sum + (i.requestedQty || 0), 0);
+  return h(
+    'div',
+    { class: 'card', style: 'display:flex;justify-content:space-between;align-items:center;gap:10px' },
+    h(
+      'div',
+      { style: 'min-width:0' },
+      h('div', { style: 'font-weight:800;font-size:16px' }, pr.prNumber),
+      h('div', { class: 'muted', style: 'font-size:13px;margin-top:2px' }, `${pr.storeName} · ${formatVisitCode(pr)}`),
+      h('div', { class: 'muted', style: 'font-size:13px' }, `${pr.items.length} SKU · ${totalQty} ชิ้น`)
+    ),
+    h(
+      'button',
+      {
+        class: 'btn-sm btn-outline',
+        style: 'width:auto;flex-shrink:0',
+        onclick: () => {
+          AppState.ui.prReportSelectedId = pr.prId;
+          render();
+        },
+      },
+      'ดูรายละเอียด'
+    )
+  );
 }
 
 /** รหัสอ้างอิง Visit แบบสั้นไว้โชว์ในการ์ด PR — ไม่ใช่ ID จริง (ตัดจาก visitId
@@ -535,7 +602,7 @@ function formatVisitCode(pr) {
   return `${mmdd}-${suffix}`; // ไม่ใส่ prefix "VIS-" เพราะ label "Visit" ใต้ตัวเลขบอกอยู่แล้ว — ที่ว่างในกล่องมีจำกัด
 }
 
-function renderPrCard(pr) {
+function renderPrDetailCard(pr) {
   const totalQty = pr.items.reduce((sum, i) => sum + (i.requestedQty || 0), 0);
 
   const headerCard = h(

@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Charmiss Merchandiser Prototype V10</title>
+<style>
+:root{
+ --navy:#0d1b2e;--navy2:#14283f;--teal:#0fa8a5;--teal2:#087f7d;--mint:#e8f8f5;
+ --bg:#f3f7f8;--card:#fff;--line:#dce7e7;--text:#102033;--muted:#6b7a88;
+ --green:#15945b;--red:#df4c4c;--orange:#e89b27;--blue:#446fe0;--purple:#7656c9;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#dde6e8;font-family:Inter,"Noto Sans Thai",Tahoma,Arial,sans-serif;color:var(--text)}
+button,input,select,textarea{font:inherit}
+.app{width:min(430px,100%);min-height:100vh;margin:auto;background:var(--bg);position:relative;box-shadow:0 0 30px rgba(0,0,0,.14);padding-bottom:78px}
+.header{background:linear-gradient(180deg,var(--navy),var(--navy2));color:#fff;padding:18px}
+.brand{display:flex;align-items:center;gap:11px}.logo{width:48px;height:48px;border-radius:15px;background:linear-gradient(145deg,#23c4c0,#0b8987);display:grid;place-items:center;font-size:25px;font-weight:900}
+.brand h1{margin:0;font-size:19px}.brand p{margin:3px 0 0;color:#78e7e1;font-size:12px}
+.datetime{margin-left:auto;text-align:right}.datetime b{display:block;font-size:13px}.datetime span{font-size:11px;color:#becdda}
+.phasebar{display:flex;gap:5px;margin-top:14px}.phase{height:5px;flex:1;border-radius:99px;background:#34495f}.phase.active,.phase.done{background:#27d0c7}
+.page{display:none}.page.active{display:block}.section{padding:16px 15px 0}
+.title{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:11px}.title h2{margin:0;font-size:21px}.title p{margin:3px 0 0;color:var(--muted);font-size:12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:15px;margin-bottom:11px;box-shadow:0 8px 18px rgba(25,43,58,.05)}
+.store-row{display:flex;justify-content:space-between;gap:10px}.store-row h3{margin:0 0 4px;font-size:18px}
+.muted{font-size:12px;color:var(--muted)}.pill{display:inline-flex;align-items:center;border-radius:999px;padding:6px 9px;font-size:11px;font-weight:900;white-space:nowrap}
+.pill.green{background:#e6f8ee;color:var(--green)}.pill.orange{background:#fff2df;color:#ab6500}.pill.red{background:#ffeded;color:var(--red)}.pill.blue{background:#ebf0ff;color:var(--blue)}.pill.teal{background:#e6f8f6;color:var(--teal2)}
+.btn{border:0;border-radius:13px;padding:12px 13px;font-weight:900;cursor:pointer}.btn.primary{background:var(--teal);color:#fff}.btn.outline{background:#fff;border:1px solid var(--teal);color:var(--teal2)}.btn.soft{background:#eef4f4;color:#3a4b5b}.btn.danger{background:#fff0f0;color:var(--red);border:1px solid #ffcaca}.btn:disabled{opacity:.45;cursor:not-allowed}.btn.full{width:100%}.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.field{display:block;font-size:11px;color:var(--muted);font-weight:800}.field input,.field select,.field textarea{width:100%;margin-top:5px;border:1px solid var(--line);border-radius:11px;padding:10px;background:#fff;color:var(--text)}
+.select-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.job-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}
+.job{border:1px solid var(--line);border-radius:14px;background:#fff;padding:13px;text-align:left}.job.active{border-color:var(--teal);background:#ecfbf8}.job b{display:block;margin-bottom:4px}
+.notice{background:#edf8ff;border:1px solid #d0e8f8;color:#345b79;border-radius:13px;padding:10px;font-size:11px;line-height:1.5}
+.warn{background:#fff7e8;border:1px solid #ffe0ab;color:#7b5319;border-radius:13px;padding:10px;font-size:11px;line-height:1.5}
+.error{background:#fff0f0;border:1px solid #ffcaca;color:#a13c3c;border-radius:13px;padding:10px;font-size:11px;line-height:1.5}
+.goodbox{background:#eaf9f1;border:1px solid #cfeede;color:#31664b;border-radius:13px;padding:10px;font-size:11px;line-height:1.5}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.kpi{background:#f5f8f8;border-radius:12px;padding:10px;text-align:center}.kpi b{display:block;font-size:19px}.kpi span{font-size:10px;color:var(--muted)}
+.bottom{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(430px,100%);background:#fff;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding:7px 3px calc(7px + env(safe-area-inset-bottom));z-index:50}
+.nav{border:0;background:transparent;color:#748290;font-size:10px;padding:5px 2px}.nav b{display:block;font-size:18px;margin-bottom:2px}.nav.active{color:var(--teal2);font-weight:900}
+.hidden{display:none!important}
+.stephead{display:flex;gap:10px;align-items:center}.stepno{width:30px;height:30px;border-radius:9px;background:var(--teal);color:#fff;display:grid;place-items:center;font-weight:900}.stephead h3{margin:0;font-size:16px}.stephead p{margin:2px 0 0;font-size:11px;color:var(--muted)}
+.product-head{display:flex;gap:12px;align-items:center}.prodimg{width:68px;height:68px;border-radius:16px;background:linear-gradient(145deg,#e4faf6,#c9eee8);display:grid;place-items:center;font-weight:900;color:var(--teal2);font-size:17px;flex:0 0 68px}
+.product-head h3{margin:0 0 4px;font-size:16px;line-height:1.3}.product-head p{margin:0;font-size:11px;color:var(--muted)}
+.prodimg img{width:100%;height:100%;object-fit:cover;border-radius:16px}
+.sku-strip-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px}.sku-strip-head .muted b{color:var(--text)}
+.selection-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.selection-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#f7fbfb;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:800}.selection-chip button{border:0;background:transparent;color:#5c6974;font-size:14px;cursor:pointer;padding:0}
+.divider-title{font-size:12px;font-weight:900;margin:10px 0 6px}
+.countgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}.countbox{background:#f3f8f7;border-radius:14px;padding:11px;text-align:center}.countbox h4{margin:0 0 9px;font-size:12px}
+.stepper{display:flex;align-items:center;justify-content:center;gap:7px}.stepper button{width:36px;height:36px;border:1px solid var(--line);background:#fff;border-radius:9px;font-size:19px;font-weight:900}.stepper output,.stepper input{width:52px;height:36px;border:1px solid var(--line);background:#fff;border-radius:9px;text-align:center;font-weight:900;font-size:16px;color:var(--text);padding:0 4px}.stepper input::-webkit-inner-spin-button,.stepper input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}.stepper input{-moz-appearance:textfield}
+.scanbar{display:grid;grid-template-columns:1fr auto;gap:7px}.scanbar input{width:100%;border:1px solid var(--line);border-radius:11px;padding:10px}.sku-list{display:flex;gap:7px;overflow:auto;padding-bottom:3px;margin-top:9px}.sku-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 10px;font-size:11px;white-space:nowrap}.sku-chip.active{background:var(--teal);color:#fff;border-color:var(--teal)}.sku-chip.done{border-color:#bde6d1;background:#effaf4;color:var(--green)}
+.photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.photo-action{border:1px dashed #98c9c6;background:#f3fbfa;color:var(--teal2);border-radius:13px;padding:12px;text-align:center;font-size:12px;font-weight:900}.photo-action input{display:none}.gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px}.thumb{height:82px;border-radius:11px;background:#eaf2f2;overflow:hidden;position:relative;display:grid;place-items:center;color:#768b93;font-size:10px}.thumb img{width:100%;height:100%;object-fit:cover}.thumb button{position:absolute;right:4px;top:4px;border:0;width:22px;height:22px;border-radius:50%;background:rgba(10,25,40,.75);color:#fff}
+.checklist{display:grid;gap:7px;margin-top:10px}.check{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:11px;padding:10px;background:#fbfdfd}.check input{margin-top:2px;accent-color:var(--teal)}.check b{font-size:12px}.check p{margin:2px 0 0;font-size:10px;color:var(--muted)}
+.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.status-grid label{font-size:10px;color:var(--muted)}.status-grid select,.status-grid input{width:100%;border:1px solid var(--line);border-radius:9px;padding:8px;margin-top:4px;background:#fff}
+.issue-card{border:1px solid #ffd3d3;background:#fffafa;border-radius:14px;padding:11px;margin-top:9px}.issue-card h4{margin:0 0 8px;font-size:13px}.issue-list{display:grid;gap:8px;margin-top:10px}.issue-item{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff}.issue-item b{font-size:12px}.issue-item p{margin:4px 0 0;font-size:10px;color:var(--muted)}
+.pr-product{display:grid;grid-template-columns:48px 1fr auto;gap:9px;align-items:center;border-bottom:1px solid var(--line);padding:10px 0}.pr-product:last-child{border-bottom:0}.pr-sku{width:48px;height:48px;border-radius:11px;background:#e5f7f3;display:grid;place-items:center;color:var(--teal2);font-weight:900;font-size:11px}.pr-product h4{margin:0 0 3px;font-size:12px}.pr-product p{margin:0;font-size:10px;color:var(--muted)}.prqty{text-align:right}.prqty b{display:block;font-size:18px}
+.readonly{background:#f4f8f8;border:1px solid var(--line);border-radius:11px;padding:9px}.readonly span{display:block;font-size:9px;color:var(--muted);margin-bottom:3px}.readonly b{font-size:11px}
+.modal{position:fixed;inset:0;background:rgba(6,20,33,.55);z-index:80;display:grid;place-items:end center;padding:15px}.modalbox{width:min(430px,100%);background:#fff;border-radius:22px;padding:18px}.modalbox h3{margin:0 0 7px}.modalbox p{font-size:12px;color:var(--muted);line-height:1.5}
+@media(min-width:800px){body{padding:20px}.app{border-radius:26px;overflow:hidden}.bottom{bottom:20px;border-radius:0 0 26px 26px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="header">
+ <div class="brand">
+  <div class="logo">C</div>
+  <div><h1>Charmiss Merchandiser</h1><p>Store Visit & Audit</p></div>
+  <div class="datetime"><b id="dateText">9 ก.ย. 69</b><span id="timeText">13:50</span></div>
+ </div>
+ <div class="phasebar"><i class="phase active"></i><i class="phase"></i><i class="phase"></i><i class="phase"></i></div>
+</header>
+
+<main>
+<section id="home" class="page active">
+ <div class="section">
+  <div class="title"><div><h2>งานวันนี้</h2><p>เลือก Customer / Branch จาก Visit เดียวกัน</p></div><span class="pill teal">3 ร้าน</span></div>
+  <div class="kpis"><div class="kpi"><b>3</b><span>Visit</span></div><div class="kpi"><b>2</b><span>เสร็จแล้ว</span></div><div class="kpi"><b style="color:var(--red)">1</b><span>ค้างงาน</span></div></div>
+
+  <div class="card" style="margin-top:11px">
+   <div class="store-row"><div><h3 id="homeStoreName">Watsons Central World</h3><div class="muted" id="homeVisitMeta">VIS-2609-0901 · สาขา 104 · 11:00</div></div><span class="pill orange">ยังไม่ไป</span></div>
+   <div class="select-grid" style="margin-top:12px">
+    <label class="field">Customer<select id="customerSel" onchange="customerChanged()"></select></label>
+    <label class="field">Branch<select id="branchSel" onchange="branchChanged()"></select></label>
+   </div>
+   <div style="margin-top:11px;font-size:11px;color:var(--muted);font-weight:900">ประเภทงาน *</div>
+   <div class="job-grid">
+    <button id="jobShelf" class="job" onclick="chooseJob('shelf')"><b>📦 Shelf Count</b><span class="muted">นับหลาย SKU + สร้าง PR</span></button>
+    <button id="jobAudit" class="job" onclick="chooseJob('audit')"><b>✅ Audit</b><span class="muted">Routine Visit / Store Audit</span></button>
+   </div>
+   <button id="checkinStartBtn" class="btn primary full" style="margin-top:11px" disabled onclick="openCheckin()">Check-in และเริ่มงาน</button>
+  </div>
+
+  <div class="card" onclick="openCompletedVisit('routine-mega')" style="cursor:pointer">
+   <div class="store-row"><div><h3>Watsons Mega Bangna</h3><div class="muted">VIS-2609-0831 · Routine Visit</div><div class="muted" style="margin-top:4px">แตะเพื่อดูรายละเอียดเดิม</div></div><span class="pill green">เสร็จแล้ว</span></div>
+  </div>
+  <div class="card" onclick="openCompletedVisit('shelf-central')" style="cursor:pointer">
+   <div class="store-row"><div><h3>Watsons Central World</h3><div class="muted">VIS-2609-0829 · Shelf Count</div><div class="muted" style="margin-top:4px">มี PR แล้ว · แตะเพื่อดูรายละเอียดเดิม</div></div><span class="pill green">เสร็จแล้ว</span></div>
+  </div>
+  <div class="card"><div class="store-row"><div><h3>EVEANDBOY Siam Square</h3><div class="muted">VIS-2609-0910 · 14:30</div></div><span class="pill blue">Promotion Audit</span></div></div>
+ </div>
+</section>
+
+<section id="checkin" class="page">
+ <div class="section">
+  <div class="title"><div><h2>Check-in</h2><p id="checkinStore">-</p></div><span class="pill blue">Auto GPS</span></div>
+  <div class="card">
+   <div class="stephead"><div class="stepno">1</div><div><h3>ยืนยัน Visit</h3><p>Customer / Branch จะใช้ชุดเดียวกันทุกหน้า</p></div></div>
+   <div class="status-grid" style="margin-top:12px">
+    <label>Visit ID<input id="checkinVisitId" readonly></label>
+    <label>ประเภทงาน<input id="checkinJob" readonly></label>
+    <label>เวลาเข้า<input id="checkinTime" readonly value="-"></label>
+    <label>สถานะ GPS<input id="gpsStatus" readonly value="กำลังอ่าน..."></label>
+   </div>
+   <div id="gpsInfo" class="notice" style="margin-top:10px">📍 กำลังอ่านพิกัดอัตโนมัติ...</div>
+   <div id="gpsOutside" class="hidden error" style="margin-top:10px">
+     คุณอยู่นอกพื้นที่สาขา <b id="gpsDistance"></b><br>
+     Allowed Radius: <span id="allowedRadius"></span> เมตร
+     <label class="field" style="margin-top:8px">เหตุผล Manual Check-in<textarea id="manualReason" placeholder="เช่น GPS ภายในห้างคลาดเคลื่อน / อยู่ชั้นใต้ดิน"></textarea></label>
+   </div>
+   <button class="btn primary full" style="margin-top:11px" onclick="confirmCheckin()">ยืนยัน Check-in</button>
+  </div>
+ </div>
+</section>
+
+<section id="shelf" class="page">
+ <div class="section">
+  <div class="title"><div><h2>Shelf Count</h2><p id="shelfStore">-</p></div><span id="countLockState" class="pill orange">แก้ไขได้</span></div>
+  <div class="card">
+   <div class="scanbar">
+    <input id="skuSearch" placeholder="Scan Barcode / ค้นหา SKU / Product" oninput="searchSku()">
+    <button class="btn outline" onclick="scanBarcode()">📷 Scan</button>
+   </div>
+   <div id="scanStatus" class="muted" style="margin-top:6px">รองรับ BarcodeDetector หาก Browser รองรับ หรือพิมพ์ Barcode/SKU ได้</div>
+   <div class="sku-strip-head"><div class="muted">รายการ SKU <b id="skuCountLabel">0 SKU</b> · เลื่อนซ้าย/ขวาเพื่อดูรายการทั้งหมด</div></div><div id="skuChips" class="sku-list"></div>
+  </div>
+
+  <div class="card">
+   <div class="product-head">
+    <div id="currentSkuImg" class="prodimg"><img id="currentSkuPhoto" alt="product"></div>
+    <div><h3 id="currentProductName">-</h3><p id="currentSkuMeta">-</p></div>
+   </div>
+   <div class="countgrid">
+    <div class="countbox"><h4 style="color:var(--green)">สินค้าดี</h4><div class="stepper"><button data-count onclick="stepCount('good',-1)">−</button><input id="goodQty" data-count-input type="number" min="0" value="0" inputmode="numeric" oninput="directCount('good',this.value)"><button data-count onclick="stepCount('good',1)">+</button></div></div>
+    <div class="countbox"><h4 style="color:var(--red)">ชำรุด</h4><div class="stepper"><button data-count onclick="stepCount('damaged',-1)">−</button><input id="damagedQty" data-count-input type="number" min="0" value="0" inputmode="numeric" oninput="directCount('damaged',this.value)"><button data-count onclick="stepCount('damaged',1)">+</button></div></div>
+    <div class="countbox"><h4 style="color:var(--blue)">Tester ดี</h4><div class="stepper"><button data-count onclick="stepCount('testerGood',-1)">−</button><input id="testerGoodQty" data-count-input type="number" min="0" value="0" inputmode="numeric" oninput="directCount('testerGood',this.value)"><button data-count onclick="stepCount('testerGood',1)">+</button></div></div>
+    <div class="countbox"><h4 style="color:var(--red)">Tester ชำรุด</h4><div class="stepper"><button data-count onclick="stepCount('testerBad',-1)">−</button><input id="testerBadQty" data-count-input type="number" min="0" value="0" inputmode="numeric" oninput="directCount('testerBad',this.value)"><button data-count onclick="stepCount('testerBad',1)">+</button></div></div>
+   </div>
+   <label class="field" style="margin-top:10px">Notes<textarea id="countNote" oninput="saveCurrentNote()" placeholder="หมายเหตุรายสินค้า"></textarea></label>
+   <div class="btnrow" style="margin-top:10px"><button class="btn soft" onclick="prevSku()">← ก่อนหน้า</button><button class="btn primary" style="flex:1" onclick="markSkuDone()">✓ เสร็จสิ้นรายการนี้</button><button class="btn soft" onclick="nextSku()">ถัดไป →</button></div>
+  </div>
+
+  <div class="card">
+   <h3 style="margin:0 0 4px">รูปภาพรวม Shelf / หน้าร้าน</h3><div class="muted">ไม่ผูกกับ SKU รายตัว</div>
+   <div class="photo-actions" style="margin-top:10px">
+    <label class="photo-action">📸 ถ่ายรูป<input id="shelfCam" type="file" accept="image/*" capture="environment" multiple onchange="addVisitPhotos(this,'Shelf')"></label>
+    <label class="photo-action">🖼️ แนบรูป<input id="shelfAttach" type="file" accept="image/*" multiple onchange="addVisitPhotos(this,'Shelf')"></label>
+   </div>
+   <div id="shelfGallery" class="gallery"></div>
+  </div>
+
+  <div class="card">
+   <h3 style="margin:0 0 8px">สรุปการนับ</h3>
+   <div class="kpis"><div class="kpi"><b id="countedSkuKpi">0/5</b><span>SKU ครบ</span></div><div class="kpi"><b id="stockMixKpi">0 / 0</b><span>สินค้าดี / ชำรุด</span></div><div class="kpi"><b id="testerMixKpi">0 / 0</b><span>Tester ดี / ชำรุด</span></div></div>
+   <div id="prAfter" class="hidden goodbox" style="margin-top:10px">✓ สร้าง PR แล้ว Shelf Count รอบนี้ถูก Lock</div>
+   <button id="createPrBtn" class="btn primary full" style="margin-top:10px" onclick="confirmCreatePR()">📄 Create PR</button>
+  </div>
+ </div>
+</section>
+
+<section id="audit" class="page">
+ <div class="section">
+  <div class="title"><div><h2>Routine Visit / Audit</h2><p id="auditStore">-</p></div><span class="pill teal">Phase 2</span></div>
+
+  <div class="card">
+   <div class="stephead"><div class="stepno">3</div><div><h3>Before Photo</h3><p>ภาพรวมก่อนเริ่มงาน</p></div></div>
+   <div class="photo-actions" style="margin-top:10px"><label class="photo-action">📸 ถ่าย Before<input type="file" accept="image/*" capture="environment" onchange="addVisitPhotos(this,'Before')"></label></div>
+  </div>
+
+  <div class="card">
+   <div class="stephead"><div class="stepno">4</div><div><h3>สินค้า & วันหมดอายุ</h3><p>FIFO · Par · Planogram</p></div></div>
+   <div class="checklist">
+    <label class="check"><input type="checkbox" data-required><div><b>เช็ค Stock / Par Level แล้ว</b><p>เติมสินค้าและจัดตำแหน่งแล้ว</p></div></label>
+    <label class="check"><input type="checkbox" data-required><div><b>FIFO / Expiry ตรวจแล้ว</b><p>ดึงสินค้าใกล้หมดอายุไว้หน้า</p></div></label>
+   </div>
+   <label class="field" style="margin-top:9px">Notes<textarea id="productAuditNote"></textarea></label>
+   <div class="divider-title">รูปประกอบ Notes</div>
+   <div class="photo-actions"><label class="photo-action">📸 ถ่ายรูป<input type="file" accept="image/*" capture="environment" multiple onchange="addVisitPhotos(this,'Audit Product Note')"></label><label class="photo-action">🖼️ แนบรูป<input type="file" accept="image/*" multiple onchange="addVisitPhotos(this,'Audit Product Note')"></label></div>
+   <div id="productAuditGallery" class="gallery"></div>
+  </div>
+
+  <div class="card">
+   <div class="stephead"><div class="stepno">5</div><div><h3>Tester</h3><p>ครบเฉด · ปริมาณ · ความสะอาด</p></div></div>
+   <div class="status-grid" style="margin-top:10px"><label>ครบทุกเฉด<select><option>ครบ</option><option>ไม่ครบ</option><option>N/A</option></select></label><label>Tester ใหม่<select><option>ไม่ต้อง</option><option>ต้องขอ</option><option>N/A</option></select></label></div>
+   <label class="field" style="margin-top:9px">Notes<textarea id="testerAuditNote"></textarea></label>
+   <div class="divider-title">รูปประกอบ Notes</div>
+   <div class="photo-actions"><label class="photo-action">📸 ถ่ายรูป<input type="file" accept="image/*" capture="environment" multiple onchange="addVisitPhotos(this,'Audit Tester Note')"></label><label class="photo-action">🖼️ แนบรูป<input type="file" accept="image/*" multiple onchange="addVisitPhotos(this,'Audit Tester Note')"></label></div>
+   <div id="testerAuditGallery" class="gallery"></div>
+  </div>
+
+  <div class="card">
+   <div class="stephead"><div class="stepno">6</div><div><h3>POSM</h3><p>Campaign / อุปกรณ์ / ตำแหน่ง</p></div></div>
+   <label class="field" style="margin-top:10px">สถานะ POSM<select id="posmStatus" onchange="togglePosm()"><option value="running">มี Campaign Running</option><option value="none">ไม่มี Campaign</option></select></label>
+   <div id="posmChecks" class="checklist">
+    <label class="check"><input type="checkbox" data-posm><div><b>Campaign ถูกต้อง</b></div></label>
+    <label class="check"><input type="checkbox" data-posm><div><b>POSM / Stand / Mirror เรียบร้อย</b></div></label>
+   </div>
+   <div id="noCampaignInfo" class="hidden notice" style="margin-top:9px">ไม่มี Campaign - POSM Checklist ไม่ถูกบังคับ</div>
+   <label class="field" style="margin-top:9px">Notes<textarea id="posmAuditNote"></textarea></label>
+   <div class="divider-title">รูปประกอบ Notes</div>
+   <div class="photo-actions"><label class="photo-action">📸 ถ่ายรูป<input type="file" accept="image/*" capture="environment" multiple onchange="addVisitPhotos(this,'Audit POSM Note')"></label><label class="photo-action">🖼️ แนบรูป<input type="file" accept="image/*" multiple onchange="addVisitPhotos(this,'Audit POSM Note')"></label></div>
+   <div id="posmAuditGallery" class="gallery"></div>
+  </div>
+
+  <div class="card">
+   <div class="stephead"><div class="stepno">7</div><div><h3>ราคา</h3><p>Price / SKU / Promotion</p></div></div>
+   <div class="checklist">
+    <label class="check"><input type="checkbox" data-required><div><b>ราคาตรงมาตรฐาน</b></div></label>
+    <label class="check"><input type="checkbox" data-required><div><b>ป้ายราคาตรง SKU / Promotion</b></div></label>
+   </div>
+   <label class="field" style="margin-top:9px">Notes<textarea id="priceAuditNote"></textarea></label>
+   <div class="divider-title">รูปประกอบ Notes</div>
+   <div class="photo-actions"><label class="photo-action">📸 ถ่ายรูป<input type="file" accept="image/*" capture="environment" multiple onchange="addVisitPhotos(this,'Audit Price Note')"></label><label class="photo-action">🖼️ แนบรูป<input type="file" accept="image/*" multiple onchange="addVisitPhotos(this,'Audit Price Note')"></label></div>
+   <div id="priceAuditGallery" class="gallery"></div>
+  </div>
+
+  <div class="card">
+   <div class="stephead"><div class="stepno">8</div><div><h3>After Photo</h3><p>มุมเดียวกับ Before</p></div></div>
+   <div class="photo-actions" style="margin-top:10px"><label class="photo-action">📸 ถ่าย After<input type="file" accept="image/*" capture="environment" onchange="addVisitPhotos(this,'After')"></label></div>
+  </div>
+
+  <div class="card">
+   <div class="stephead"><div class="stepno">!</div><div><h3>Issue / Action to Back Office</h3><p>ผูกปัญหากับ SKU ที่เกี่ยวข้อง และส่งต่อทีมที่รับผิดชอบอัตโนมัติ</p></div></div>
+   <div class="issue-card">
+    <label class="field">ประเภทของปัญหา
+      <select id="issueType" style="width:100%;margin-top:5px;border:1px solid var(--line);border-radius:11px;padding:10px;background:#fff;color:var(--text)">
+        <option value="">-- เลือกประเภทของปัญหา --</option>
+        <option>Out of Stock</option>
+        <option>Expiry</option>
+        <option>Tester</option>
+        <option>Price</option>
+        <option>Display</option>
+        <option>POSM</option>
+      </select>
+    </label>
+
+    <label class="field" style="margin-top:10px">SKU ที่พบปัญหา
+      <div class="scanbar" style="margin-top:5px">
+        <input id="issueSkuSearch" list="issueSkuOptions" placeholder="พิมพ์ SKU / Barcode / ชื่อสินค้า">
+        <button class="btn outline" type="button" onclick="issueScanBarcode()">📷 Scan</button>
+      </div>
+      <datalist id="issueSkuOptions"></datalist>
+      <div class="muted" style="margin-top:6px">ค้นหาแล้วกด “เพิ่ม SKU” ได้หลายรายการ</div>
+      <div class="btnrow" style="margin-top:7px"><button class="btn soft" type="button" onclick="addIssueSku()">+ เพิ่ม SKU</button></div>
+      <div id="issueSelectedSkus" class="selection-chips"></div>
+    </label>
+
+    <label class="field" style="margin-top:8px">รายละเอียด<textarea id="issueNote" placeholder="อธิบายปัญหาและ Action ที่ต้องการ"></textarea></label>
+
+    <div class="divider-title">รูปประกอบ Issue</div>
+    <div class="photo-actions">
+      <label class="photo-action">📸 ถ่ายรูป
+        <input type="file" accept="image/*" capture="environment" multiple onchange="addVisitPhotos(this,'Issue Photo')">
+      </label>
+      <label class="photo-action">🖼️ แนบรูป
+        <input type="file" accept="image/*" multiple onchange="addVisitPhotos(this,'Issue Photo')">
+      </label>
+    </div>
+    <div id="issuePhotoGallery" class="gallery"></div>
+
+    <button class="btn danger full" style="margin-top:8px" onclick="addIssue()">+ บันทึก Issue</button>
+   </div>
+   <div id="issueList" class="issue-list"></div>
+  </div>
+
+  <div class="card">
+   <div class="stephead"><div class="stepno">9</div><div><h3>จบงานหน้าร้าน</h3><p>ตรวจ Checklist หลัก + Before/After</p></div></div>
+   <div id="auditIncomplete" class="warn" style="margin-top:9px">ยังทำงานไม่ครบ</div>
+   <button id="auditNextBtn" class="btn primary full" style="margin-top:9px" onclick="go('notes')" disabled>ไป Phase 3</button>
+  </div>
+ </div>
+</section>
+
+<section id="notes" class="page">
+ <div class="section">
+  <div class="title"><div><h2>Phase 3 · Notes</h2><p>ข้อมูลเพิ่มเติมจากหน้าร้าน</p></div></div>
+  <div class="card">
+   <label class="check" style="margin-bottom:10px">
+    <input id="noExtraNote" type="checkbox" onchange="toggleExtraNote()">
+    <div><b>ไม่มีข้อมูลเพิ่มเติมจากหน้าร้าน</b><p>เลือกข้อนี้ได้เมื่อไม่มี Note / Feedback / Issue เพิ่มเติม</p></div>
+   </label>
+   <div id="extraNoteFields">
+    <label class="field">Tag<select id="freeTag"><option value="">-- เลือกประเภทข้อมูล --</option><option>คู่แข่ง</option><option>คำขอจากร้าน</option><option>Feedback หน้าร้าน</option><option>ปัญหาร้าน</option><option>อื่นๆ</option></select></label>
+    <label class="field" style="margin-top:9px">รายละเอียด<textarea id="freeNote" placeholder="กรอกรายละเอียดเพิ่มเติม"></textarea></label>
+    <div style="margin-top:12px"><div style="font-size:12px;font-weight:900;margin-bottom:7px">รูปประกอบ Notes</div>
+     <div class="photo-actions"><label class="photo-action">📸 ถ่ายรูป<input type="file" accept="image/*" capture="environment" multiple onchange="addVisitPhotos(this,'Note')"></label><label class="photo-action">🖼️ Upload รูป<input type="file" accept="image/*" multiple onchange="addVisitPhotos(this,'Note')"></label></div>
+     <div id="noteGallery" class="gallery"></div>
+    </div>
+   </div>
+   <button class="btn primary full" style="margin-top:12px" onclick="validateNotesAndSummary()">สรุปงาน</button>
+  </div>
+ </div>
+</section>
+
+<section id="summary" class="page">
+ <div class="section">
+  <div class="title"><div><h2>Phase 4 · Summary</h2><p id="summaryStore">-</p></div><span class="pill green">Preview</span></div>
+  <div class="card"><div id="summaryText" class="notice"></div></div>
+  <div class="card">
+   <div class="status-grid"><label>Check-in<input id="sumCheckin" readonly></label><label>Check-out<input id="sumCheckout" readonly value="-"></label></div>
+   <button class="btn primary full" style="margin-top:9px" onclick="closeVisit()">ส่งสรุปและปิดงาน</button>
+  </div>
+ </div>
+</section>
+
+<section id="prs" class="page">
+ <div class="section">
+  <div class="title"><div><h2>Purchase Request</h2><p>PR ที่สร้างจาก Shelf Count จริง</p></div></div>
+  <div id="prList"></div>
+ </div>
+</section>
+
+<section id="prdetail" class="page">
+ <div class="section">
+  <button class="btn soft" onclick="go('prs')">← กลับรายการ PR</button>
+  <div class="card" style="margin-top:10px">
+   <div class="store-row"><div><div class="muted">Purchase Request</div><h2 id="prDetailNo" style="margin:3px 0 4px;font-size:20px"></h2><div id="prDetailStore" class="muted"></div></div><span class="pill green">Created</span></div>
+   <div class="kpis" style="margin-top:10px"><div class="kpi"><b id="prDetailSku">0</b><span>SKU</span></div><div class="kpi"><b id="prDetailQty">0</b><span>Qty</span></div><div class="kpi"><b id="prDetailVisit" style="font-size:11px">-</b><span>Visit</span></div></div>
+  </div>
+  <div class="card"><h3 style="margin:0 0 8px">รายละเอียดรายสินค้า</h3><div id="prProductList"></div></div>
+ </div>
+</section>
+
+<section id="photos" class="page">
+ <div class="section">
+  <div class="title"><div><h2>Photos</h2><p>รูปภาพแยกตาม Visit</p></div><span id="photoCountVisit" class="pill teal">0 Visits</span></div>
+  <div id="photoVisitList"></div>
+ </div>
+</section>
+
+<section id="visitdetail" class="page">
+ <div class="section">
+  <button class="btn soft" onclick="go('home')">← Home</button>
+  <div class="card" style="margin-top:10px"><div class="store-row"><div><div class="muted" id="visitDetailLabel">Completed Visit</div><h2 id="visitDetailStoreName" style="margin:3px 0 4px;font-size:20px">-</h2><div id="visitDetailMeta" class="muted">-</div></div><span id="visitDetailStatus" class="pill green">เสร็จแล้ว</span></div></div>
+  <div class="card"><div class="select-grid"><div class="readonly"><span>Check-in</span><b id="visitDetailCheckin">-</b></div><div class="readonly"><span>Check-out</span><b id="visitDetailCheckout">-</b></div><div class="readonly"><span>GPS</span><b id="visitDetailGps">-</b></div><div class="readonly"><span>Issues</span><b id="visitDetailIssues">0 รายการ</b></div></div></div>
+  <div id="visitDetailDynamic"></div>
+ </div>
+</section>
+</main>
+
+<nav class="bottom">
+ <button class="nav active" onclick="go('home',this)"><b>⌂</b>Home</button>
+ <button class="nav" onclick="go(job==='audit'?'audit':'shelf',this)"><b>▦</b>Task</button>
+ <button class="nav" onclick="go('notes',this)"><b>▧</b>Notes</button>
+ <button class="nav" onclick="go('photos',this)"><b>▣</b>Photos</button>
+ <button class="nav" onclick="go('prs',this)"><b>☰</b>PR</button>
+</nav>
+</div>
+
+<div id="prModal" class="modal hidden"><div class="modalbox"><h3>ยืนยันสร้าง PR?</h3><p>ระบบจะสร้าง PR จาก Shelf Count จริงของ Visit นี้ และ Lock การนับทันที</p><div id="prModalSummary" class="notice"></div><div class="btnrow" style="margin-top:10px"><button class="btn soft" style="flex:1" onclick="prModal.classList.add('hidden')">ยกเลิก</button><button class="btn primary" style="flex:1" onclick="createPR()">สร้าง PR</button></div></div></div>
+<div id="summaryConfirmModal" class="modal hidden"><div class="modalbox"><h3>ยืนยันสรุปงาน?</h3><p>หลังจากกด “สรุปงาน” แล้ว จะไม่ควรแก้ไขข้อมูล Visit นี้ต่อ กรุณาตรวจสอบข้อมูลให้ครบก่อนยืนยัน</p><div class="warn">ต้องการไปหน้า Summary เพื่อปิดงานใช่หรือไม่</div><div class="btnrow" style="margin-top:10px"><button class="btn soft" style="flex:1" onclick="summaryConfirmModal.classList.add('hidden')">กลับไปแก้ไข</button><button class="btn primary" style="flex:1" onclick="goSummaryConfirmed()">ยืนยันสรุปงาน</button></div></div></div>
+
+<script>
+const branchMaster={
+ 'Watsons':[
+  {code:'104',name:'Central World',lat:13.7460,lng:100.5396,radius:250,visitId:'VIS-2609-0901'},
+  {code:'108',name:'Mega Bangna',lat:13.6469,lng:100.6801,radius:250,visitId:'VIS-2609-0902'}
+ ],
+ 'EVEANDBOY':[
+  {code:'215',name:'Siam Square',lat:13.7450,lng:100.5340,radius:250,visitId:'VIS-2609-0910'}
+ ],
+ 'Tofu Skincare':[
+  {code:'MG001',name:'Platinum Pop',lat:13.7498,lng:100.5390,radius:250,visitId:'VIS-2609-0920'}
+ ]
+};
+const skuMaster=[
+ {sku:'11010',barcode:'8857126873599',name:'Charming Glow Foundation 5g -02',par:12,pack:6},
+ {sku:'11011',barcode:'8857126873418',name:'Crystal Cube PH Blush Gel',par:10,pack:6},
+ {sku:'11012',barcode:'8857126873425',name:'Universe Plumping Lip Gloss',par:8,pack:6},
+ {sku:'11013',barcode:'8857126873432',name:'Jewel Jelly Crystal Stick 02 Silver Moon',par:10,pack:6},
+ {sku:'12070',barcode:'8857127482927',name:'Matte All Day Cushion 8g -02',par:12,pack:6}
+];
+let counts={}; skuMaster.forEach(s=>counts[s.sku]={good:0,damaged:0,testerGood:0,testerBad:0,note:'',done:false});
+let currentSkuIndex=0, job=null, currentBranch=null, capturedGPS=null, checkinAt=null, prLocked=false;
+let currentVisitPhotos=[], issues=[], prs=[], issueSelectedSkus=[], completedPhotos=[
+ {visitId:'VIS-2609-0831',store:'Watsons Mega Bangna',items:[{type:'Before'},{type:'After'},{type:'Audit Note'},{type:'Issue'}]},
+ {visitId:'VIS-2609-0829',store:'Watsons Central World',items:[{type:'Shelf'},{type:'Shelf'},{type:'PR'}]}
+];
+const completedVisitDetails={
+ 'routine-mega':{
+   label:'Completed Visit',store:'Watsons Mega Bangna',meta:'VIS-2609-0831 · Routine Visit',checkin:'09:15:22',checkout:'10:26:41',gps:'Auto Saved',issues:'1 รายการ',
+   detailHtml:`<div class="card"><h3 style="margin:0 0 7px">Phase 2 · Audit ที่กรอกไว้</h3><div class="notice">✓ FIFO / Planogram เรียบร้อย<br>✓ Tester checked<br>✓ POSM: ไม่มี Campaign<br>✓ ราคาเรียบร้อย<br>Issue: Tester SKU 11010 ใกล้หมด → Trade Marketing</div></div><div class="card"><h3 style="margin:0 0 7px">Phase 3 · Notes</h3><div class="notice"><b>Tag:</b> คำขอจากร้าน<br><b>รายละเอียด:</b> ร้านขอเพิ่ม Tester เฉดขายดี และขอเติมสต๊อกสัปดาห์หน้า</div><div class="muted" style="margin-top:8px">มีรูป Notes แนบ 2 รูป ดูต่อได้ที่เมนู Photos</div></div>`
+ },
+ 'shelf-central':{
+   label:'Completed Visit',store:'Watsons Central World',meta:'VIS-2609-0829 · Shelf Count',checkin:'10:03:14',checkout:'11:21:55',gps:'Auto Saved',issues:'0 รายการ',
+   detailHtml:`<div class="card"><h3 style="margin:0 0 7px">รายละเอียดการนับสินค้า</h3><div class="kpis"><div class="kpi"><b>5/5</b><span>SKU ครบ</span></div><div class="kpi"><b>48 / 2</b><span>สินค้าดี / ชำรุด</span></div><div class="kpi"><b>3 / 1</b><span>Tester ดี / ชำรุด</span></div></div><div class="goodbox" style="margin-top:10px">สร้าง PR แล้ว จึงไม่สามารถแก้ไขการนับได้</div></div><div class="card"><h3 style="margin:0 0 7px">Phase 3 · Notes</h3><div class="notice"><b>Tag:</b> ไม่มีข้อมูลเพิ่มเติมจากหน้าร้าน<br><b>รายละเอียด:</b> ไม่มี Note เพิ่มเติม</div></div><div class="card"><h3 style="margin:0 0 8px">PR ที่สร้างจาก Shelf Count</h3><div class="pr-product"><div class="pr-sku">11010</div><div><h4>Charming Glow Foundation 5g -02</h4><p>8857126873599</p><p>Count ดี 5 / ชำรุด 0</p></div><div class="prqty"><span class="muted">PR</span><b>12</b><span class="muted">ชิ้น</span></div></div><div class="pr-product"><div class="pr-sku">11011</div><div><h4>Crystal Cube PH Blush Gel</h4><p>8857126873418</p><p>Count ดี 4 / ชำรุด 1</p></div><div class="prqty"><span class="muted">PR</span><b>6</b><span class="muted">ชิ้น</span></div></div><div class="pr-product"><div class="pr-sku">12070</div><div><h4>Matte All Day Cushion 8g -02</h4><p>8857127482927</p><p>Count ดี 2 / ชำรุด 1</p></div><div class="prqty"><span class="muted">PR</span><b>12</b><span class="muted">ชิ้น</span></div></div></div>`
+ }
+};
+
+function init(){
+ customerSel.innerHTML=Object.keys(branchMaster).map(x=>`<option>${x}</option>`).join('');
+ customerChanged(); renderSku(); renderChips(); fillIssueSku(); updateClock(); setInterval(updateClock,30000); updateAuditState();
+}
+function updateClock(){const d=new Date();dateText.textContent=d.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'});timeText.textContent=d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}
+function customerChanged(){const c=customerSel.value;branchSel.innerHTML=branchMaster[c].map((b,i)=>`<option value="${i}">${b.name}</option>`).join('');branchChanged()}
+function branchChanged(){currentBranch=branchMaster[customerSel.value][+branchSel.value];homeStoreName.textContent=customerSel.value+' '+currentBranch.name;homeVisitMeta.textContent=currentBranch.visitId+' · สาขา '+currentBranch.code+' · Scheduled Visit';syncVisitLabels()}
+function syncVisitLabels(){if(!currentBranch)return; const s=customerSel.value+' · '+currentBranch.name+' · '+currentBranch.visitId;checkinStore.textContent=s;shelfStore.textContent=s;auditStore.textContent=s;summaryStore.textContent=s;checkinVisitId.value=currentBranch.visitId}
+function chooseJob(x){job=x;checkinStartBtn.disabled=false;jobShelf.classList.toggle('active',x==='shelf');jobAudit.classList.toggle('active',x==='audit')}
+function go(id,nav){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');if(nav){document.querySelectorAll('.nav').forEach(x=>x.classList.remove('active'));nav.classList.add('active')}if(id==='prs')renderPRList();if(id==='photos')renderPhotoVisits();if(id==='summary')renderSummary();window.scrollTo({top:0,behavior:'smooth'})}
+function openCheckin(){checkinJob.value=job==='audit'?'Routine Visit / Audit':'Shelf Count';go('checkin');captureGPS()}
+function distanceMeters(lat1,lon1,lat2,lon2){const R=6371000,toRad=x=>x*Math.PI/180;const dLat=toRad(lat2-lat1),dLon=toRad(lon2-lon1);const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(a))}
+function captureGPS(){
+ gpsStatus.value='กำลังอ่าน...';gpsInfo.textContent='📍 กำลังบันทึก GPS อัตโนมัติ';gpsOutside.classList.add('hidden');
+ if(!navigator.geolocation){gpsStatus.value='อ่าน GPS ไม่ได้';gpsOutside.classList.remove('hidden');gpsDistance.textContent='-';allowedRadius.textContent=currentBranch.radius;return}
+ navigator.geolocation.getCurrentPosition(p=>{
+  const d=distanceMeters(p.coords.latitude,p.coords.longitude,currentBranch.lat,currentBranch.lng);
+  capturedGPS={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy,distance:d};
+  allowedRadius.textContent=currentBranch.radius;
+  if(d<=currentBranch.radius){gpsStatus.value='Verified';gpsInfo.className='goodbox';gpsInfo.innerHTML=`✓ GPS Verified<br>${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}<br>ห่างจากสาขา ${Math.round(d)} m (Allowed ${currentBranch.radius} m)`;gpsOutside.classList.add('hidden')}
+  else{gpsStatus.value='Outside Store Radius';gpsInfo.className='error';gpsInfo.innerHTML=`⚠ GPS อยู่นอกพื้นที่สาขา`;gpsDistance.textContent=Math.round(d)+' เมตร';gpsOutside.classList.remove('hidden')}
+ },e=>{capturedGPS=null;gpsStatus.value='อ่าน GPS ไม่สำเร็จ';gpsInfo.className='error';gpsInfo.textContent='ไม่สามารถอ่าน GPS ได้ กรุณาระบุเหตุผล Manual Check-in';gpsDistance.textContent='-';allowedRadius.textContent=currentBranch.radius;gpsOutside.classList.remove('hidden')},{enableHighAccuracy:true,timeout:7000,maximumAge:0})
+}
+function confirmCheckin(){if((!capturedGPS || capturedGPS.distance>currentBranch.radius) && !manualReason.value.trim()){alert('กรุณาระบุเหตุผล Manual Check-in');return}checkinAt=new Date();checkinTime.value=checkinAt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});sumCheckin.value=checkinTime.value;go(job==='audit'?'audit':'shelf')}
+function mockProductImage(sku){const colorMap={11010:['#d7f3ec','#9ad9c8'],11011:['#fce6ef','#e8b6cc'],11012:['#efe9ff','#cdbef7'],11013:['#fff0dc','#f6cf91'],12070:['#f5eadf','#dbbd9d']};const pair=colorMap[sku]||['#e7f4f2','#b7ddd8'];const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="${pair[0]}"/><stop offset="1" stop-color="${pair[1]}"/></linearGradient></defs><rect width="120" height="120" rx="22" fill="url(#g)"/><rect x="38" y="22" width="44" height="14" rx="6" fill="#0fa8a5" opacity=".9"/><rect x="34" y="34" width="52" height="58" rx="12" fill="#ffffff" stroke="#7bc9c2" stroke-width="4"/><circle cx="60" cy="63" r="11" fill="#9ad9c8"/><text x="60" y="108" font-size="15" text-anchor="middle" font-family="Arial" fill="#0d1b2e">SKU ${sku}</text></svg>`;return 'data:image/svg+xml;utf8,'+encodeURIComponent(svg)}
+function renderSku(){const s=skuMaster[currentSkuIndex],c=counts[s.sku];currentSkuPhoto.src=mockProductImage(s.sku);currentProductName.textContent=s.name;currentSkuMeta.textContent=`SKU ${s.sku} · Barcode ${s.barcode}`;goodQty.value=c.good;damagedQty.value=c.damaged;testerGoodQty.value=c.testerGood;testerBadQty.value=c.testerBad;countNote.value=c.note;renderChips();updateCountSummary()}
+function renderChips(){skuCountLabel.textContent=skuMaster.length+' SKU';skuChips.innerHTML=skuMaster.map((s,i)=>`<button class="sku-chip ${i===currentSkuIndex?'active':''} ${counts[s.sku].done?'done':''}" onclick="selectSku(${i})">${s.sku}${counts[s.sku].done?' ✓':''}</button>`).join('')}
+function selectSku(i){saveCurrentNote();currentSkuIndex=i;renderSku()}
+function stepCount(key,n){if(prLocked)return;const s=skuMaster[currentSkuIndex],c=counts[s.sku];c[key]=Math.max(0,c[key]+n);renderSku()}
+function directCount(key,value){if(prLocked)return;const s=skuMaster[currentSkuIndex],c=counts[s.sku];let n=parseInt(value,10);if(isNaN(n)||n<0)n=0;c[key]=n;updateCountSummary()}
+function saveCurrentNote(){const s=skuMaster[currentSkuIndex];counts[s.sku].note=countNote.value}
+function markSkuDone(){if(prLocked)return;saveCurrentNote();const s=skuMaster[currentSkuIndex];counts[s.sku].done=true;renderChips();updateCountSummary();nextSku()}
+function prevSku(){saveCurrentNote();currentSkuIndex=(currentSkuIndex-1+skuMaster.length)%skuMaster.length;renderSku()}
+function nextSku(){saveCurrentNote();currentSkuIndex=(currentSkuIndex+1)%skuMaster.length;renderSku()}
+function searchSku(){const q=skuSearch.value.trim().toLowerCase();if(!q)return;const i=skuMaster.findIndex(s=>s.sku.toLowerCase().includes(q)||s.barcode.includes(q)||s.name.toLowerCase().includes(q));if(i>=0)selectSku(i)}
+async function scanBarcode(){
+ if(!('BarcodeDetector' in window)){scanStatus.textContent='Browser นี้ยังไม่รองรับ BarcodeDetector - ใช้การพิมพ์ Barcode/SKU ในช่องค้นหา';skuSearch.focus();return}
+ try{
+  const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+  const video=document.createElement('video');video.srcObject=stream;video.playsInline=true;await video.play();
+  const detector=new BarcodeDetector({formats:['ean_13','ean_8','code_128']});scanStatus.textContent='กำลังสแกน...';
+  let tries=0;const timer=setInterval(async()=>{tries++;const codes=await detector.detect(video);if(codes.length){clearInterval(timer);stream.getTracks().forEach(t=>t.stop());skuSearch.value=codes[0].rawValue;searchSku();scanStatus.textContent='อ่าน Barcode: '+codes[0].rawValue}else if(tries>30){clearInterval(timer);stream.getTracks().forEach(t=>t.stop());scanStatus.textContent='ไม่พบ Barcode กรุณาพิมพ์เอง'}},200);
+ }catch(e){scanStatus.textContent='ไม่สามารถเปิดกล้องได้ กรุณาพิมพ์ Barcode/SKU'}
+}
+function suggestedQty(s,c){const shortage=Math.max(s.par-c.good,0);return shortage===0?0:Math.ceil(shortage/s.pack)*s.pack}
+function updateCountSummary(){const done=skuMaster.filter(s=>counts[s.sku].done).length;const good=skuMaster.reduce((a,s)=>a+counts[s.sku].good,0);const damaged=skuMaster.reduce((a,s)=>a+counts[s.sku].damaged,0);const testerGood=skuMaster.reduce((a,s)=>a+counts[s.sku].testerGood,0);const testerBad=skuMaster.reduce((a,s)=>a+counts[s.sku].testerBad,0);countedSkuKpi.textContent=`${done}/${skuMaster.length}`;stockMixKpi.textContent=`${good} / ${damaged}`;testerMixKpi.textContent=`${testerGood} / ${testerBad}`}
+function addVisitPhotos(input,type){[...input.files].forEach(f=>currentVisitPhotos.push({type,file:f,url:URL.createObjectURL(f),visitId:currentBranch.visitId,store:customerSel.value+' '+currentBranch.name}));input.value='';renderShelfGallery();renderNoteGallery();renderAuditNoteGalleries();updateAuditState()}
+function renderShelfGallery(){shelfGallery.innerHTML=currentVisitPhotos.filter(p=>p.type==='Shelf').map((p,i)=>`<div class="thumb"><img src="${p.url}"><button onclick="removePhoto('${p.url}')">×</button></div>`).join('')}
+function renderNoteGallery(){const el=document.getElementById('noteGallery');if(!el)return;el.innerHTML=currentVisitPhotos.filter(p=>p.type==='Note').map(p=>`<div class="thumb"><img src="${p.url}"><button onclick="removePhoto('${p.url}')">×</button></div>`).join('')}
+function renderAuditNoteGalleries(){const map={'Audit Product Note':'productAuditGallery','Audit Tester Note':'testerAuditGallery','Audit POSM Note':'posmAuditGallery','Audit Price Note':'priceAuditGallery','Issue Photo':'issuePhotoGallery'};Object.entries(map).forEach(([type,id])=>{const el=document.getElementById(id);if(!el)return;el.innerHTML=currentVisitPhotos.filter(p=>p.type===type).map(p=>`<div class="thumb"><img src="${p.url}"><button onclick="removePhoto('${p.url}')">×</button></div>`).join('')})}
+function removePhoto(url){if(prLocked)return;const p=currentVisitPhotos.find(x=>x.url===url);if(p)URL.revokeObjectURL(p.url);currentVisitPhotos=currentVisitPhotos.filter(x=>x.url!==url);renderShelfGallery();renderNoteGallery();renderAuditNoteGalleries()}
+function confirmCreatePR(){const items=skuMaster.map(s=>({sku:s.sku,barcode:s.barcode,name:s.name,qty:suggestedQty(s,counts[s.sku])})).filter(x=>x.qty>0);const total=items.reduce((a,x)=>a+x.qty,0);prModalSummary.innerHTML=`Visit: <b>${currentBranch.visitId}</b><br>SKU ที่แนะนำ: <b>${items.length}</b><br>จำนวนรวม: <b>${total}</b> ชิ้น`;prModal.classList.remove('hidden')}
+function createPR(){const items=skuMaster.map(s=>({sku:s.sku,barcode:s.barcode,name:s.name,qty:suggestedQty(s,counts[s.sku]),count:{...counts[s.sku]}})).filter(x=>x.qty>0);const no='PR-'+String(new Date().getFullYear()+543).slice(-2)+String(new Date().getMonth()+1).padStart(2,'0')+'-'+Math.floor(1000+Math.random()*8999);prs.unshift({no,visitId:currentBranch.visitId,store:customerSel.value+' '+currentBranch.name,items,total:items.reduce((a,x)=>a+x.qty,0),createdAt:new Date()});prLocked=true;document.querySelectorAll('[data-count],[data-count-input]').forEach(x=>x.disabled=true);countNote.readOnly=true;shelfCam.disabled=true;shelfAttach.disabled=true;countLockState.textContent='ล็อกแล้ว · มี PR';countLockState.className='pill green';prAfter.classList.remove('hidden');createPrBtn.disabled=true;prModal.classList.add('hidden');renderChips()}
+function renderPRList(){prList.innerHTML=prs.length?prs.map(p=>`<div class="card"><div class="store-row"><div><h3>${p.no}</h3><div class="muted">${p.store} · ${p.visitId}</div><div class="muted" style="margin-top:4px">${p.items.length} SKU · ${p.total} ชิ้น</div></div><button class="btn outline" onclick="openPR('${p.no}')">ดูรายละเอียด</button></div></div>`).join(''):'<div class="card"><div class="muted">ยังไม่มี PR ที่สร้างใน Session นี้</div></div>'}
+function openPR(no){const p=prs.find(x=>x.no===no);if(!p)return;prDetailNo.textContent=p.no;prDetailStore.textContent=p.store;prDetailSku.textContent=p.items.length;prDetailQty.textContent=p.total;prDetailVisit.textContent=p.visitId;prProductList.innerHTML=p.items.map(x=>`<div class="pr-product"><div class="pr-sku">${x.sku}</div><div><h4>${x.name}</h4><p>${x.barcode}</p><p>Count ดี ${x.count.good} / ชำรุด ${x.count.damaged}</p></div><div class="prqty"><span class="muted">แนะนำ</span><b>${x.qty}</b><span class="muted">ชิ้น</span></div></div>`).join('');go('prdetail')}
+function fillIssueSku(){issueSkuOptions.innerHTML=skuMaster.map(s=>`<option value="${s.sku} | ${s.barcode} | ${s.name}"></option>`).join('');issueSkuSearch.value='';issueType.value='';issueSelectedSkus=[];renderIssueSkuSelection()}
+function findIssueSkuMatches(query){const q=(query||'').trim().toLowerCase();if(!q)return [];return skuMaster.filter(x=>x.sku.toLowerCase()===q||x.barcode.toLowerCase()===q||`${x.sku} | ${x.barcode} | ${x.name}`.toLowerCase()===q||x.name.toLowerCase().includes(q)||x.sku.toLowerCase().includes(q)||x.barcode.includes(q))}
+function renderIssueSkuSelection(){issueSelectedSkus=[...new Set(issueSelectedSkus)].sort();const issueSelectedSkusEl=document.getElementById('issueSelectedSkus');if(issueSelectedSkusEl)issueSelectedSkusEl.innerHTML=issueSelectedSkus.map(sku=>`<div class="selection-chip">${sku}<button type="button" onclick="removeIssueSku('${sku}')">×</button></div>`).join('')}
+function addIssueSku(){const matches=findIssueSkuMatches(issueSkuSearch.value);if(!matches.length){alert('ไม่พบ SKU / Barcode / ชื่อสินค้าที่ค้นหา');return}const sku=matches[0].sku;if(!issueSelectedSkus.includes(sku))issueSelectedSkus.push(sku);issueSkuSearch.value='';renderIssueSkuSelection()}
+function removeIssueSku(sku){issueSelectedSkus=issueSelectedSkus.filter(x=>x!==sku);renderIssueSkuSelection()}
+function getIssueTeam(type){const map={'Out of Stock':'Supply Chain / Sales','Expiry':'Supply Chain / QA','Tester':'Trade Marketing','Price':'Pricing / KAE','Display':'Merchandising Supervisor','POSM':'Trade Marketing / Brand'};return map[type]||'Operations'}
+async function issueScanBarcode(){if(!('BarcodeDetector' in window)){alert('Browser นี้ยังไม่รองรับ BarcodeDetector - กรุณาพิมพ์ SKU / Barcode');issueSkuSearch.focus();return}try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const video=document.createElement('video');video.srcObject=stream;video.playsInline=true;await video.play();const detector=new BarcodeDetector({formats:['ean_13','ean_8','code_128']});let tries=0;const timer=setInterval(async()=>{tries++;const codes=await detector.detect(video);if(codes.length){clearInterval(timer);stream.getTracks().forEach(t=>t.stop());issueSkuSearch.value=codes[0].rawValue;addIssueSku()}else if(tries>30){clearInterval(timer);stream.getTracks().forEach(t=>t.stop());alert('ไม่พบ Barcode กรุณาลองใหม่หรือพิมพ์เอง')}},200)}catch(e){alert('ไม่สามารถเปิดกล้องได้ กรุณาพิมพ์ SKU / Barcode')}}
+function addIssue(){if(!issueType.value){alert('กรุณาเลือกประเภทของปัญหา');return}if(issueSelectedSkus.length===0){alert('กรุณาเลือก SKU อย่างน้อย 1 รายการ');return}if(!issueNote.value.trim()){alert('กรุณาระบุรายละเอียด Issue');return}const team=getIssueTeam(issueType.value);issues.push({skus:[...issueSelectedSkus],type:issueType.value,team,note:issueNote.value.trim(),visitId:currentBranch.visitId});issueSkuSearch.value='';issueType.value='';issueNote.value='';issueSelectedSkus=[];renderIssueSkuSelection();renderIssues()}
+function renderIssues(){issueList.innerHTML=issues.map((x,i)=>{const names=x.skus.map(sku=>skuMaster.find(s=>s.sku===sku)?.name||sku).join(', ');return `<div class="issue-item"><div class="store-row"><b>${x.type}</b><span class="pill teal">${x.skus.length} SKU</span></div><p><b>SKU:</b> ${x.skus.join(', ')}</p><p>${names}</p><p>${x.note}</p><p><b>ส่งต่อ:</b> ${x.team}</p></div>`}).join('')}
+function togglePosm(){const none=posmStatus.value==='none';posmChecks.classList.toggle('hidden',none);noCampaignInfo.classList.toggle('hidden',!none);document.querySelectorAll('[data-posm]').forEach(x=>{x.disabled=none;if(none)x.checked=false});updateAuditState()}
+function updateAuditState(){const req=[...document.querySelectorAll('[data-required]')];const posm=[...document.querySelectorAll('[data-posm]')];const noCampaign=posmStatus&&posmStatus.value==='none';const before=currentVisitPhotos.some(p=>p.type==='Before'),after=currentVisitPhotos.some(p=>p.type==='After');const ok=req.every(x=>x.checked)&&(noCampaign||posm.every(x=>x.checked))&&before&&after;auditNextBtn.disabled=!ok;auditIncomplete.textContent=ok?'ครบแล้ว สามารถไป Phase 3':'ยังไม่ครบ: ตรวจ Checklist หลัก + Before/After';auditIncomplete.className=ok?'goodbox':'warn'}
+document.addEventListener('change',e=>{if(e.target.matches('[data-required],[data-posm]'))updateAuditState()})
+function toggleExtraNote(){const none=noExtraNote.checked;extraNoteFields.classList.toggle('hidden',none);if(none){freeTag.value='';freeNote.value=''}}
+function validateNotesAndSummary(){if(!noExtraNote.checked){const hasNote=!!freeNote.value.trim();const hasPhoto=currentVisitPhotos.some(p=>p.type==='Note');if(!freeTag.value&&!hasNote&&!hasPhoto){alert('หากไม่มีข้อมูลเพิ่มเติม กรุณาเลือก “ไม่มีข้อมูลเพิ่มเติมจากหน้าร้าน” หรือกรอก Note / แนบรูป');return}if(hasNote&&!freeTag.value){alert('กรุณาเลือก Tag สำหรับ Note');return}}summaryConfirmModal.classList.remove('hidden')}
+function goSummaryConfirmed(){summaryConfirmModal.classList.add('hidden');go('summary')}
+function renderSummary(){const noNote=document.getElementById('noExtraNote')?.checked;summaryText.innerHTML=`<b>${customerSel.value} ${currentBranch.name}</b><br>Visit: ${currentBranch.visitId}<br>Job: ${job==='audit'?'Routine Visit / Audit':'Shelf Count'}<br>GPS: ${gpsStatus.value}<br>Issues: ${issues.filter(x=>x.visitId===currentBranch.visitId).length} รายการ<br>Photos: ${currentVisitPhotos.filter(x=>x.visitId===currentBranch.visitId).length} รูป<br>Note: ${noNote?'ไม่มีข้อมูลเพิ่มเติม':(freeNote.value||'-')}`;summaryStore.textContent=customerSel.value+' · '+currentBranch.name+' · '+currentBranch.visitId}
+function closeVisit(){sumCheckout.value=new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});alert('ปิด Visit เรียบร้อย');go('home')}
+function openCompletedVisit(id='routine-mega'){const v=completedVisitDetails[id];if(!v)return;visitDetailLabel.textContent=v.label;visitDetailStoreName.textContent=v.store;visitDetailMeta.textContent=v.meta;visitDetailCheckin.textContent=v.checkin;visitDetailCheckout.textContent=v.checkout;visitDetailGps.textContent=v.gps;visitDetailIssues.textContent=v.issues;visitDetailDynamic.innerHTML=v.detailHtml;go('visitdetail')}
+function renderPhotoVisits(){const current={visitId:currentBranch?currentBranch.visitId:'-',store:currentBranch?customerSel.value+' '+currentBranch.name:'-',items:currentVisitPhotos.filter(x=>x.visitId===currentBranch?.visitId)};const all=[...completedPhotos];if(current.items.length)all.unshift(current);photoCountVisit.textContent=all.length+' Visits';photoVisitList.innerHTML=all.map(v=>`<div class="card"><div class="store-row"><div><h3>${v.store}</h3><div class="muted">${v.visitId}</div><div class="muted" style="margin-top:4px">${v.items.length} รูป</div></div><span class="pill teal">${v.items.length}</span></div><div class="gallery">${v.items.slice(0,3).map((p,i)=>p.url?`<div class="thumb"><img src="${p.url}"></div>`:`<div class="thumb">${p.type}</div>`).join('')}</div></div>`).join('')}
+init();
+</script>
+</body>
+</html>
