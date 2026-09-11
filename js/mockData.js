@@ -57,15 +57,16 @@ const MOCK_MERS = [
   { merId: 'MER003', merName: 'พี่ภู่', username: 'phu', password: '1234' },
 ];
 
-// แคตตาล็อก SKU ทั้งหมดในระบบ (ใช้ชื่ออ้างอิงร่วมกันทุกสาขา)
+// แคตตาล็อก SKU ทั้งหมดในระบบ (ใช้ชื่ออ้างอิงร่วมกันทุกสาขา) — barcode ใช้จำลอง
+// การค้นหา/สแกนใน Stock Count และแสดงในรายงาน PR
 const SKU_CATALOG = [
-  { sku: 'SKU001', name: 'ลิปสติกแมทท์ เบอร์ 01 Nude' },
-  { sku: 'SKU002', name: 'ลิปสติกแมทท์ เบอร์ 05 Red' },
-  { sku: 'SKU003', name: 'รองพื้นคุมมัน เบอร์ 21' },
-  { sku: 'SKU004', name: 'แป้งพัฟคอมแพค เบอร์ 02' },
-  { sku: 'SKU005', name: 'บลัชออน สีชมพูพีช' },
-  { sku: 'SKU006', name: 'มาสคาร่ากันน้ำ สีดำ' },
-  { sku: 'SKU007', name: 'อายไลเนอร์ลิควิด สีดำ' },
+  { sku: 'SKU001', name: 'ลิปสติกแมทท์ เบอร์ 01 Nude', barcode: '8857126870011' },
+  { sku: 'SKU002', name: 'ลิปสติกแมทท์ เบอร์ 05 Red', barcode: '8857126870028' },
+  { sku: 'SKU003', name: 'รองพื้นคุมมัน เบอร์ 21', barcode: '8857126870035' },
+  { sku: 'SKU004', name: 'แป้งพัฟคอมแพค เบอร์ 02', barcode: '8857126870042' },
+  { sku: 'SKU005', name: 'บลัชออน สีชมพูพีช', barcode: '8857126870059' },
+  { sku: 'SKU006', name: 'มาสคาร่ากันน้ำ สีดำ', barcode: '8857126870066' },
+  { sku: 'SKU007', name: 'อายไลเนอร์ลิควิด สีดำ', barcode: '8857126870073' },
 ];
 
 // Planogram: สร้างอัตโนมัติต่อสาขา (หมุนเวียน SKU 4-5 ตัว/สาขา) เพื่อให้ทุกสาขา
@@ -86,6 +87,22 @@ function getSkuName(sku) {
   return found ? found.name : sku;
 }
 
+function getSkuBarcode(sku) {
+  const found = SKU_CATALOG.find((s) => s.sku === sku);
+  return found ? found.barcode : '';
+}
+
+/** ค้นหา SKU จากรายการที่กำหนด (planogram ของสาขา) ด้วย SKU/Barcode ตรงตัว หรือค้นชื่อบางส่วน */
+function findSkuInList(list, term) {
+  const q = (term || '').trim().toLowerCase();
+  if (!q) return null;
+  return (
+    list.find((item) => item.sku.toLowerCase() === q || getSkuBarcode(item.sku) === q) ||
+    list.find((item) => getSkuName(item.sku).toLowerCase().includes(q)) ||
+    null
+  );
+}
+
 function getPlanogramForStore(storeId) {
   return PLANOGRAM[storeId] || [];
 }
@@ -96,4 +113,14 @@ function getStoreById(storeId) {
 
 function getMerById(merId) {
   return MOCK_MERS.find((m) => m.merId === merId) || null;
+}
+
+// สาขาที่ต้องทำ Flow พิเศษ: นับสต๊อกเพิ่มแล้วเปิด PR ก่อนเข้างานหน้าที่เดิม
+// (Phase 2 step "นับสต๊อก & PR" แทรกก่อน step จัดการสินค้าที่ชั้นวาง) — ปัจจุบัน
+// มีแค่ Tofu Skincare เจ้าเดียว ระบบตรวจจาก storeId ตรงนี้อัตโนมัติตอนเข้าสาขา
+// ไม่ต้องให้ Mer เลือกเอง เผื่ออนาคตมีสาขาอื่นเพิ่ม แค่เติม storeId ในนี้
+const STOCK_COUNT_STORE_IDS = ['BR11'];
+
+function requiresStockCount(storeId) {
+  return STOCK_COUNT_STORE_IDS.includes(storeId);
 }

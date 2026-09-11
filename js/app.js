@@ -52,7 +52,7 @@ function startLiveClock() {
 // ============================================================================
 
 const AppState = {
-  screen: 'LOGIN', // LOGIN | STORE_LIST | PROFILE | CHECKIN | PHASE2 | PHASE3 | PHASE4 | CHECKOUT
+  screen: 'LOGIN', // LOGIN | STORE_LIST | PROFILE | PR_REPORT | CHECKIN | PHASE2 | PHASE3 | PHASE4 | CHECKOUT
   storeId: null,
   visit: null,
   readOnly: false, // true เมื่อกลับมาดูรายงานของสาขาที่ "เสร็จแล้ว" (ดูอย่างเดียว)
@@ -62,6 +62,10 @@ const AppState = {
     checkinPhoto: null, // ภาพหน้าสาขา (ภายนอก) ที่ถ่ายไว้ก่อนกดเช็คอิน — ยังไม่มี visit ให้เก็บตอนนี้
     loginForm: { username: '', password: '', error: '' },
     modal: null, // descriptor ของ modal ที่เปิดอยู่ (ดูหัวข้อ 9)
+    stockCountSku: null, // SKU ที่กำลังโฟกัสอยู่ในหน้า "นับสต๊อก & PR" (เลือกจาก scan/ค้นหา หรือกด chip)
+    stockCountSearch: '', // ข้อความในช่องสแกน/ค้นหา SKU ของ step เดียวกัน
+    stockCountSearchError: null,
+    stockCountRevealPr: false, // true หลังกดปุ่ม "สร้าง PR" ครั้งแรก — ถึงจะโชว์รายการแนะนำสั่งซื้อ
   },
   phase3Draft: { tag: null, text: '', photo: null },
 };
@@ -99,20 +103,22 @@ function renderVisitHeader({ phase, phase2Step, onBack, title }) {
     h('div', { class: 'phase-progress' }, steps),
     h('div', { class: 'phase-progress__label' }, `Phase ${phase}/4 · ${PHASE_LABELS[phase]}`),
   ];
-  if (phase === 2) {
+  if (phase === 2 && AppState.visit) {
     // แต่ละจุดกดข้ามไปมาระหว่าง step ได้อิสระ (ไม่บังคับทำตามลำดับ) — สีเขียว
     // สะท้อนว่า step นั้นครบจริงหรือยัง (เช็คจาก validator) ไม่ใช่แค่ "ผ่านมาแล้ว"
-    const dots = STEP_VALIDATORS.slice(1).map((validator, idx) => {
-      const stepNum = idx + 1;
-      const done = AppState.visit ? validator(AppState.visit) : false;
-      const isCurrent = stepNum === phase2Step;
+    // จำนวน/ลำดับ step ไม่คงที่อีกต่อไป (ดู getPhase2StepConfig) — สาขาที่
+    // requiresStockCount() เช่น Tofu จะมี step "นับสต๊อก & PR" เพิ่มมาด้วย
+    const steps = getPhase2StepConfig(AppState.visit);
+    const dots = steps.map((s) => {
+      const done = s.validate(AppState.visit);
+      const isCurrent = s.num === phase2Step;
       return h('button', {
         class: `substep-dots__dot ${done ? 'is-done' : ''} ${isCurrent ? 'is-current' : ''}`,
-        onclick: () => goToPhase2Step(stepNum),
+        onclick: () => goToPhase2Step(s.num),
       });
     });
     children.push(h('div', { class: 'substep-dots' }, dots));
-    // แสดงชื่อขั้นตอนทั้ง 6 อันในตัวเลือกเดียว กดเลือกแล้วข้ามไปขั้นตอนนั้นได้ทันที
+    // แสดงชื่อขั้นตอนทั้งหมดในตัวเลือกเดียว กดเลือกแล้วข้ามไปขั้นตอนนั้นได้ทันที
     // (มีเครื่องหมาย ✓ กำกับขั้นตอนที่ทำครบแล้ว)
     children.push(
       h(
@@ -121,10 +127,9 @@ function renderVisitHeader({ phase, phase2Step, onBack, title }) {
           class: 'phase2-step-select',
           onchange: (e) => goToPhase2Step(Number(e.target.value)),
         },
-        STEP_LABELS.slice(1).map((label, idx) => {
-          const stepNum = idx + 1;
-          const done = AppState.visit ? STEP_VALIDATORS[stepNum](AppState.visit) : false;
-          return h('option', { value: stepNum, selected: stepNum === phase2Step }, `${done ? '✓ ' : ''}${label}`);
+        steps.map((s) => {
+          const done = s.validate(AppState.visit);
+          return h('option', { value: s.num, selected: s.num === phase2Step }, `${done ? '✓ ' : ''}${s.num}. ${s.label}`);
         })
       )
     );
@@ -132,12 +137,34 @@ function renderVisitHeader({ phase, phase2Step, onBack, title }) {
   return h('div', { class: 'app-header' }, children);
 }
 
-function renderCheckRow({ label, sub, checked, onToggle }) {
+/**
+ * แถว checklist ทั่วไป — เพิ่ม badge สถานะ "✓ ผ่าน" (เขียว) / "⚠ ต้องทำ" (ส้ม)
+ * ต่อท้าย label ให้เห็นชัดเจนว่าข้อนี้ยังขาดอยู่หรือผ่านแล้ว โดยรับ `satisfied`
+ * แยกจาก `checked` เผื่อบางข้อผ่านได้จากทางอื่น (เช่น ติ๊ก checkbox หรือแจ้ง
+ * ปัญหาแทนก็นับว่าผ่านเหมือนกัน) ถ้าไม่ส่ง satisfied มาจะใช้ค่า checked แทน
+ * ส่ง required: false ถ้าข้อนั้นเป็นแค่ข้อมูลเสริมไม่บังคับ จะไม่ขึ้น badge เตือน
+ */
+function renderCheckRow({ label, sub, checked, onToggle, satisfied, required = true }) {
+  const isSatisfied = satisfied === undefined ? checked : satisfied;
   return h(
     'label',
     { class: 'check-row' },
     h('input', { type: 'checkbox', checked: checked, onchange: (e) => onToggle(e.target.checked) }),
-    h('div', {}, h('div', { class: 'check-row__label' }, label), sub ? h('div', { class: 'check-row__sub' }, sub) : null)
+    h(
+      'div',
+      {},
+      h(
+        'div',
+        { class: 'check-row__label' },
+        label,
+        isSatisfied
+          ? h('span', { class: 'badge badge-success', style: 'margin-left:8px' }, '✓ ผ่าน')
+          : required
+          ? h('span', { class: 'badge badge-warning', style: 'margin-left:8px' }, '⚠ ต้องทำ')
+          : null
+      ),
+      sub ? h('div', { class: 'check-row__sub' }, sub) : null
+    )
   );
 }
 
@@ -317,6 +344,7 @@ function renderBottomNav(activeScreen) {
   const items = [
     { screen: 'STORE_LIST', icon: '📋', label: 'งานที่ต้องทำ' },
     { screen: null, icon: '📅', label: 'ปฏิทิน', href: 'admin.html' },
+    { screen: 'PR_REPORT', icon: '🧾', label: 'รายงาน PR' },
     { screen: 'PROFILE', icon: '👤', label: 'โปรไฟล์' },
   ];
   return h(
@@ -470,6 +498,103 @@ function renderProfileScreen() {
   );
 
   return h('div', {}, header, content, renderBottomNav('PROFILE'));
+}
+
+// ============================================================================
+// Screen: รายงาน PR — ดูย้อนหลัง PR ที่สร้างจาก Stock Count ทุกสาขา/ทุก Mer
+// (ปัจจุบันมีแค่ Tofu ที่สร้าง PR ได้ แต่หน้านี้ไม่ผูกกับสาขาใดสาขาหนึ่ง เผื่อ
+// อนาคตมีสาขาอื่นเพิ่มเข้ามาใช้ Flow นี้ด้วย)
+// ============================================================================
+
+function renderPrReportScreen() {
+  const header = h('div', { class: 'app-header' }, h('div', { class: 'app-header__top' }, h('div', { class: 'app-header__title' }, 'รายงาน PR')));
+
+  const content = h('div', { class: 'screen screen--with-nav' });
+  const listContainer = h('div', { style: 'display:flex;flex-direction:column;gap:10px' }, h('p', { class: 'muted' }, 'กำลังโหลดรายการ PR...'));
+  content.appendChild(listContainer);
+
+  DataLayer.getAllPurchaseRequests().then((prs) => {
+    clearNode(listContainer);
+    if (prs.length === 0) {
+      listContainer.appendChild(h('div', { class: 'info-box' }, 'ยังไม่มี PR ที่สร้างไว้'));
+      return;
+    }
+    prs.forEach((pr) => listContainer.appendChild(renderPrCard(pr)));
+  });
+
+  return h('div', {}, header, content, renderBottomNav('PR_REPORT'));
+}
+
+/** รหัสอ้างอิง Visit แบบสั้นไว้โชว์ในการ์ด PR — ไม่ใช่ ID จริง (ตัดจาก visitId
+ *  มาต่อท้ายวันที่เยี่ยม) แค่ให้พอเทียบ/จำได้ง่ายกว่า visitId เต็มที่ยาวมาก */
+function formatVisitCode(pr) {
+  const dateStr = pr.visitDate || (pr.createdAt || '').slice(0, 10);
+  const parts = dateStr.split('-'); // [YYYY, MM, DD]
+  const mmdd = parts.length === 3 ? `${parts[1]}${parts[2]}` : '0000';
+  const suffix = (pr.visitId || '').slice(-3).toUpperCase();
+  return `${mmdd}-${suffix}`; // ไม่ใส่ prefix "VIS-" เพราะ label "Visit" ใต้ตัวเลขบอกอยู่แล้ว — ที่ว่างในกล่องมีจำกัด
+}
+
+function renderPrCard(pr) {
+  const totalQty = pr.items.reduce((sum, i) => sum + (i.requestedQty || 0), 0);
+
+  const headerCard = h(
+    'div',
+    { class: 'card' },
+    h(
+      'div',
+      { style: 'display:flex;justify-content:space-between;align-items:flex-start;gap:10px' },
+      h(
+        'div',
+        {},
+        h('div', { class: 'muted', style: 'font-size:12px' }, 'Purchase Request'),
+        h('div', { style: 'font-size:22px;font-weight:800;margin-top:2px' }, pr.prNumber),
+        h('div', { class: 'muted', style: 'margin-top:2px' }, `${pr.storeName} · ${formatDateTime(pr.createdAt)}`)
+      ),
+      h('div', { class: 'badge badge-success', style: 'padding:8px 14px;font-size:13px' }, 'Created')
+    ),
+    h(
+      'div',
+      { class: 'pr-stat-row' },
+      h('div', { class: 'pr-stat' }, h('div', { class: 'pr-stat__value' }, String(pr.items.length)), h('div', { class: 'pr-stat__label' }, 'SKU')),
+      h('div', { class: 'pr-stat' }, h('div', { class: 'pr-stat__value' }, String(totalQty)), h('div', { class: 'pr-stat__label' }, 'Qty')),
+      h(
+        'div',
+        { class: 'pr-stat' },
+        h('div', { class: 'pr-stat__value', style: 'font-size:13px' }, formatVisitCode(pr)),
+        h('div', { class: 'pr-stat__label' }, 'Visit')
+      )
+    )
+  );
+
+  const itemsCard = h(
+    'div',
+    { class: 'card' },
+    h('div', { class: 'section-title', style: 'font-size:15px' }, 'รายละเอียดรายสินค้า'),
+    pr.items.map((i) =>
+      h(
+        'div',
+        { class: 'pr-item-row' },
+        h('div', { class: 'pr-item-chip' }, i.sku),
+        h(
+          'div',
+          { class: 'pr-item-info' },
+          h('div', { class: 'pr-item-name' }, i.skuName),
+          i.barcode ? h('div', { class: 'muted', style: 'font-size:12px' }, i.barcode) : null,
+          h('div', { class: 'muted', style: 'font-size:12px' }, `Count ดี ${i.good} / ชำรุด ${i.damaged}`)
+        ),
+        h(
+          'div',
+          { class: 'pr-item-qty' },
+          h('div', { class: 'muted', style: 'font-size:11px' }, 'แนะนำ'),
+          h('div', { class: 'pr-item-qty__value' }, String(i.requestedQty)),
+          h('div', { class: 'muted', style: 'font-size:11px' }, 'ชิ้น')
+        )
+      )
+    )
+  );
+
+  return h('div', { style: 'display:flex;flex-direction:column;gap:10px' }, headerCard, itemsCard);
 }
 
 function openAddAdHocModal() {
@@ -683,40 +808,87 @@ function isStep4Valid(v) {
   return p.flagPendingInstall && p.issuePhotos.length >= 1;
 }
 function isStep5Valid(v) {
-  return v.npd.answered;
+  const npd = v.npd;
+  if (!npd.answered) return false;
+  if (npd.status === 'partial') return !!(npd.missingDetail && npd.missingDetail.trim());
+  return true;
 }
-function isStep6Valid(v) {
-  return v.photosAfter.length >= 1;
+/** step สุดท้ายของ Phase 2 — เดิมบังคับถ่ายภาพ After ซ้ำอีกรอบทั้งที่แต่ละส่วน
+ *  (จัดสินค้า/Tester/POSM) ก็มีถ่ายรูปหลังทำงานเสร็จของตัวเองอยู่แล้ว ตัดออก
+ *  เพราะซ้ำซ้อน เปลี่ยนเป็นหน้าตรวจสอบรายการ + กดยืนยันจบงานหลักแทน (ไม่มีรูป) */
+function isConfirmMainValid(v) {
+  return v.mainWorkConfirmed === true;
 }
-
-const STEP_VALIDATORS = [null, isStep1Valid, isStep2Valid, isStep3Valid, isStep4Valid, isStep5Valid, isStep6Valid];
-const STEP_LABELS = [null, '1. ถ่ายภาพ Before', '2. จัดการสินค้าที่ชั้นวาง', '3. Tester', '4. POSM', '5. NPD', '6. ถ่ายภาพ After'];
-
-function getIncompletePhase2Steps(visit) {
-  const missing = [];
-  for (let i = 1; i <= 6; i++) {
-    if (!STEP_VALIDATORS[i](visit)) missing.push(STEP_LABELS[i]);
-  }
-  return missing;
+/** "นับสต๊อก & PR" — เฉพาะสาขาที่ requiresStockCount() (ปัจจุบันคือ Tofu) ต้องนับ
+ *  ครบทุกรายการ แล้วสร้าง PR หรือยืนยันว่าไม่ต้องสั่ง อย่างใดอย่างหนึ่งก่อน */
+function isAllSkuCounted(v) {
+  const sc = v.stockCount;
+  return getPlanogramForStore(v.storeId).every((item) => sc.counts[item.sku] && sc.counts[item.sku].counted);
+}
+function isStockCountStepValid(v) {
+  return isAllSkuCounted(v) && (v.stockCount.prCreated || v.stockCount.prSkipped);
 }
 
 /**
- * ทุก step ข้ามไปมาได้อิสระ ยกเว้น Step 1 (ถ่ายภาพ Before) ที่ต้องทำให้เสร็จ
- * ก่อนเสมอ — เพราะเป็นหลักฐาน "ก่อน" ที่ step อื่นๆ (โดยเฉพาะภาพ After ใน
- * step 6) ต้องใช้เทียบ ถ้ายังไม่ถ่าย จะดีดกลับไป step 1 พร้อมแจ้งเตือน
+ * รายการ step ของ Phase 2 แบบ dynamic ต่อ visit — ปกติมี 6 step (Before →
+ * Product → Tester → POSM → NPD → ยืนยันจบงานหลัก) แต่ถ้าสาขานี้ requiresStockCount()
+ * (ปัจจุบันมีแค่ Tofu) จะแทรก "นับสต๊อก & PR" เป็น step ที่ 2 ต่อจาก Before Photo
+ * ก่อน step จัดการสินค้าที่ชั้นวางเสมอ (ต้องนับก่อนเริ่มเติม/จัดเรียง ไม่งั้น
+ * ตัวเลขจะไม่ตรงสภาพจริงตอนมาถึง) เลขลำดับ (num) คำนวณใหม่ทุกครั้งจาก index
+ * ของ array นี้ ห้ามใช้เลขคงที่ที่อื่นในโค้ดอีก เพราะเลขจะขยับไปตามสาขา
+ */
+function getPhase2StepConfig(visit) {
+  const list = [{ key: 'before', label: 'ถ่ายภาพ Before', validate: isStep1Valid }];
+  if (requiresStockCount(visit.storeId)) {
+    list.push({ key: 'stockCount', label: 'นับสต๊อก & PR', validate: isStockCountStepValid });
+  }
+  list.push(
+    { key: 'product', label: 'จัดการสินค้าที่ชั้นวาง', validate: isStep2Valid },
+    { key: 'tester', label: 'Tester', validate: isStep3Valid },
+    { key: 'posm', label: 'POSM', validate: isStep4Valid },
+    { key: 'npd', label: 'NPD', validate: isStep5Valid },
+    { key: 'confirmMain', label: 'ยืนยันจบงานหลัก', validate: isConfirmMainValid }
+  );
+  return list.map((s, idx) => ({ ...s, num: idx + 1 }));
+}
+
+function getIncompletePhase2Steps(visit) {
+  return getPhase2StepConfig(visit)
+    .filter((s) => !s.validate(visit))
+    .map((s) => `${s.num}. ${s.label}`);
+}
+
+/**
+ * ทุก step ข้ามไปมาได้อิสระ ยกเว้น 2 step ที่ต้องทำให้เสร็จก่อนเสมอ:
+ * (1) Before Photo — เป็นหลักฐาน "ก่อน" ที่ step อื่น (โดยเฉพาะภาพ After)
+ *     ต้องใช้เทียบ ถ้ายังไม่ถ่าย จะดีดกลับไป Before Photo
+ * (2) นับสต๊อก & PR (เฉพาะสาขาที่มี step นี้) — ต้องนับ+สร้าง/ยืนยันข้าม PR
+ *     ก่อนไปเติม/จัดเรียงสินค้า ไม่งั้นตัวเลขจะไม่ตรงสภาพจริงตอนมาถึง
  */
 function goToPhase2Step(n) {
-  if (n !== 1 && !isStep1Valid(AppState.visit)) {
-    AppState.phase2Step = 1;
-    AppState.visit.currentPhase2Step = 1;
-    DataLayer.saveVisit(AppState.visit);
-    AppState.ui.modal = { type: 'stepGate' };
+  const visit = AppState.visit;
+  const steps = getPhase2StepConfig(visit);
+  const beforeStep = steps.find((s) => s.key === 'before');
+  if (n !== beforeStep.num && !isStep1Valid(visit)) {
+    AppState.phase2Step = beforeStep.num;
+    visit.currentPhase2Step = beforeStep.num;
+    DataLayer.saveVisit(visit);
+    AppState.ui.modal = { type: 'stepGate', gateKey: 'before' };
+    render();
+    return;
+  }
+  const stockStep = steps.find((s) => s.key === 'stockCount');
+  if (stockStep && n > stockStep.num && !isStockCountStepValid(visit)) {
+    AppState.phase2Step = stockStep.num;
+    visit.currentPhase2Step = stockStep.num;
+    DataLayer.saveVisit(visit);
+    AppState.ui.modal = { type: 'stepGate', gateKey: 'stockCount' };
     render();
     return;
   }
   AppState.phase2Step = n;
-  AppState.visit.currentPhase2Step = n;
-  DataLayer.saveVisit(AppState.visit);
+  visit.currentPhase2Step = n;
+  DataLayer.saveVisit(visit);
   render();
 }
 
@@ -724,9 +896,14 @@ function goToPhase2Step(n) {
  * แต่ละ Step ใน Phase 2 สลับไปมาได้อิสระ ไม่บังคับทำให้ครบก่อนถึงจะไปต่อได้
  * (เดิม disable ปุ่ม "ถัดไป" จนกว่า step ปัจจุบันจะครบ — ตัดออกแล้ว) ความครบถ้วน
  * จะถูกตรวจอีกทีตอนกด "จบงาน Phase 2" เท่านั้น (ดู handleFinishPhase2) ส่วน hint
- * ที่นี่เหลือไว้เป็นแค่คำเตือนเบาๆ ไม่ block การกดผ่าน
+ * ที่นี่เหลือไว้เป็นแค่คำเตือนเบาๆ ไม่ block การกดผ่าน — รับ stepKey แทนเลขคงที่
+ * เพราะเลขลำดับจริงขยับไปตามสาขา (ดู getPhase2StepConfig)
  */
-function renderStepFooter(stepNum, valid, hint, isLast) {
+function renderStepFooter(stepKey, valid, hint) {
+  const steps = getPhase2StepConfig(AppState.visit);
+  const idx = steps.findIndex((s) => s.key === stepKey);
+  const stepNum = steps[idx].num;
+  const isLast = idx === steps.length - 1;
   const row = h('div', { class: 'btn-row' });
   if (stepNum > 1) {
     row.appendChild(h('button', { class: 'btn btn-ghost', onclick: () => goToPhase2Step(stepNum - 1) }, '← ย้อนกลับ'));
@@ -764,14 +941,17 @@ function renderPhase2Screen() {
     title: AppState.visit.storeName,
   });
   const stepRenderers = {
-    1: renderStep1Photos,
-    2: renderStep2Product,
-    3: renderStep3Tester,
-    4: renderStep4Posm,
-    5: renderStep5Npd,
-    6: renderStep6PhotosAfter,
+    before: renderStep1Photos,
+    stockCount: renderStepStockCount,
+    product: renderStep2Product,
+    tester: renderStep3Tester,
+    posm: renderStep4Posm,
+    npd: renderStep5Npd,
+    confirmMain: renderStepConfirmMain,
   };
-  return h('div', {}, header, stepRenderers[AppState.phase2Step]());
+  const steps = getPhase2StepConfig(AppState.visit);
+  const current = steps.find((s) => s.num === AppState.phase2Step) || steps[0];
+  return h('div', {}, header, stepRenderers[current.key]());
 }
 
 // --- Step 1: Photo Before ---
@@ -817,8 +997,496 @@ function renderStep1Photos() {
       'ถ่ายภาพรวมเคาน์เตอร์/ชั้นวางจากมุมมาตรฐาน (มุมเดิมทุกรอบ เพื่อเทียบกับภาพ After ได้ง่าย) บังคับอย่างน้อย 1 ภาพ — ถ่ายเพิ่มได้หากมีจุดที่มีปัญหาเด่นชัด'
     ),
     grid,
-    renderStepFooter(1, isStep1Valid(v), 'ต้องถ่ายภาพอย่างน้อย 1 ภาพก่อนไปขั้นตอนถัดไป', false)
+    renderStepFooter('before', isStep1Valid(v), 'ต้องถ่ายภาพอย่างน้อย 1 ภาพก่อนไปขั้นตอนถัดไป')
   );
+}
+
+/** ปุ่ม −/+ นับจำนวนทีละ 1 ต่อ field — ใช้กับทั้ง 4 ช่องในหน้านับสต๊อก */
+function renderQtyCounter(counts, field, label, locked) {
+  return h(
+    'div',
+    { style: 'text-align:center' },
+    h('div', { class: 'field-label', style: 'text-align:center' }, label),
+    h(
+      'div',
+      { style: 'display:flex;align-items:center;justify-content:center;gap:8px' },
+      h(
+        'button',
+        {
+          class: 'btn-sm btn-outline',
+          style: 'width:36px;padding:0;flex-shrink:0',
+          disabled: locked,
+          onclick: () => {
+            counts[field] = Math.max(0, counts[field] - 1);
+            DataLayer.saveVisit(AppState.visit);
+            render();
+          },
+        },
+        '−'
+      ),
+      h('div', { style: 'min-width:28px;font-weight:800;font-size:16px' }, String(counts[field])),
+      h(
+        'button',
+        {
+          class: 'btn-sm btn-outline',
+          style: 'width:36px;padding:0;flex-shrink:0',
+          disabled: locked,
+          onclick: () => {
+            counts[field] = counts[field] + 1;
+            DataLayer.saveVisit(AppState.visit);
+            render();
+          },
+        },
+        '+'
+      )
+    )
+  );
+}
+
+// --- Step "นับสต๊อก & PR" (เฉพาะสาขาที่ requiresStockCount() เช่น Tofu) ---
+// อ้างอิงจาก MD "Shelf Count" Job Type: ค้นหา/สแกนทีละ SKU (พิมพ์ Barcode/SKU/
+// ชื่อสินค้า หรือกด chip) มาปรับจำนวน (สินค้าดี/ชำรุด/Tester ดี/ชำรุด) แล้วกด
+// "ยืนยันรายการนี้" ทีละตัวจนครบทุก SKU ใน planogram ของสาขา — ระบบไม่มี
+// กล้องสแกน barcode จริง (ต้องใช้ BarcodeDetector API ซึ่งบราวเซอร์รองรับไม่
+// ทั่วถึง) จึงจำลองด้วยการพิมพ์รหัสแล้วกด "ค้นหา/Scan" แทน ครบทุก SKU แล้ว
+// ระบบจะแนะนำจำนวนที่ควรขอ (Suggest PR) = Par Level - จำนวนสินค้าดีที่นับได้
+// ก่อนกด "สร้าง PR" ยังแก้ไขจำนวนที่นับได้อิสระ (ตาม Business Rule "Shelf
+// Count Editable Before PR") กดสร้าง/ข้าม PR ต้องเตือนก่อนเสมอว่าจะนับสต๊อก
+// ซ้ำไม่ได้อีก (ผ่าน stockLockConfirm modal) แล้ว Lock ตัวเลขทันที
+function renderStepStockCount() {
+  const v = AppState.visit;
+  const sc = v.stockCount;
+  const planogram = getPlanogramForStore(v.storeId);
+  const locked = sc.prCreated || sc.prSkipped;
+
+  // สร้าง/ข้าม PR ไปแล้ว = ล็อกถาวร — โชว์สรุปอย่างเดียว ไม่มีช่องค้นหา/ปุ่ม
+  // แก้ไขใดๆ หลงเหลือให้กด เพราะปุ่มที่ยัง "ดูเหมือนกดได้" แต่ disabled อยู่ข้างใน
+  // ทำให้เข้าใจผิดว่าเสีย/ใช้งานไม่ได้ (ตัดปัญหานี้ตั้งแต่ต้นทาง)
+  if (locked) {
+    return h(
+      'div',
+      { class: 'screen' },
+      h('div', { class: 'section-title' }, '📊 นับสต๊อก & เปิด PR'),
+      h('div', { class: 'card' }, h('div', { class: 'info-box' }, sc.prCreated ? `✓ สร้าง PR แล้ว — เลขที่ ${sc.prNumber}` : '✓ ยืนยันไม่ต้องสั่ง PR รอบนี้')),
+      h(
+        'div',
+        { class: 'card' },
+        planogram.map((item) => {
+          const c = sc.counts[item.sku];
+          const requested = sc.prCreated ? c.requestedQty : null;
+          return h(
+            'div',
+            { class: 'pr-item-row' },
+            h('div', { class: 'pr-item-chip' }, item.sku),
+            h(
+              'div',
+              { class: 'pr-item-info' },
+              h('div', { class: 'pr-item-name' }, getSkuName(item.sku)),
+              h('div', { class: 'muted', style: 'font-size:12px' }, getSkuBarcode(item.sku)),
+              h('div', { class: 'muted', style: 'font-size:12px' }, `ดี ${c.good} / ชำรุด ${c.damaged} · Tester ดี ${c.testerGood} / ชำรุด ${c.testerDamaged}`)
+            ),
+            h(
+              'div',
+              { class: 'pr-item-qty' },
+              requested
+                ? h('div', { class: 'muted', style: 'font-size:11px' }, 'สั่ง')
+                : null,
+              h('div', { class: 'pr-item-qty__value' }, requested ? String(requested) : '—'),
+              requested ? h('div', { class: 'muted', style: 'font-size:11px' }, 'ชิ้น') : null
+            )
+          );
+        })
+      ),
+      renderStepFooter('stockCount', true)
+    );
+  }
+
+  const countedTotal = planogram.filter((item) => sc.counts[item.sku].counted).length;
+
+  // SKU ที่โฟกัสอยู่ตอนนี้ — ถ้าค่าที่เก็บไว้ไม่อยู่ใน planogram สาขานี้แล้ว
+  // (เช่นสลับมาจาก visit อื่น) fallback ไปตัวแรกที่ยังไม่นับ หรือตัวแรกสุด
+  if (!AppState.ui.stockCountSku || !planogram.some((item) => item.sku === AppState.ui.stockCountSku)) {
+    const firstUncounted = planogram.find((item) => !sc.counts[item.sku].counted);
+    AppState.ui.stockCountSku = (firstUncounted || planogram[0]).sku;
+  }
+  const currentSku = AppState.ui.stockCountSku;
+
+  const doSearch = () => {
+    const match = findSkuInList(planogram, AppState.ui.stockCountSearch);
+    if (match) {
+      AppState.ui.stockCountSku = match.sku;
+      AppState.ui.stockCountSearch = '';
+      AppState.ui.stockCountSearchError = null;
+    } else {
+      AppState.ui.stockCountSearchError = 'ไม่พบสินค้านี้ในรายการที่ต้องนับ';
+    }
+    render();
+  };
+
+  const searchCard = h(
+    'div',
+    { class: 'card' },
+    h(
+      'div',
+      { class: 'btn-row' },
+      h('input', {
+        type: 'text',
+        placeholder: 'สแกน/พิมพ์ Barcode หรือ SKU หรือค้นหาชื่อสินค้า',
+        value: AppState.ui.stockCountSearch,
+        disabled: locked,
+        oninput: (e) => {
+          AppState.ui.stockCountSearch = e.target.value;
+        },
+        onkeydown: (e) => {
+          if (e.key === 'Enter') doSearch();
+        },
+      }),
+      h('button', { class: 'btn btn-outline btn-sm', style: 'width:auto', disabled: locked, onclick: doSearch }, '🔍 ค้นหา')
+    ),
+    h(
+      'button',
+      {
+        class: 'btn btn-outline btn-sm',
+        style: 'margin-top:8px',
+        onclick: () =>
+          openBarcodeScanner((rawValue) => {
+            const match = findSkuInList(planogram, rawValue);
+            if (match) {
+              AppState.ui.stockCountSku = match.sku;
+              AppState.ui.stockCountSearchError = null;
+            } else {
+              AppState.ui.stockCountSearchError = `ไม่พบสินค้าที่ตรงกับ Barcode ${rawValue} ในรายการที่ต้องนับ`;
+            }
+          }),
+      },
+      '📷 สแกน Barcode ด้วยกล้อง'
+    ),
+    AppState.ui.stockCountSearchError ? h('div', { class: 'error-box', style: 'margin-top:8px' }, AppState.ui.stockCountSearchError) : null
+  );
+
+  const chipsRow = h(
+    'div',
+    { style: 'display:flex;gap:8px;overflow-x:auto;padding-bottom:4px' },
+    planogram.map((item) =>
+      h(
+        'button',
+        {
+          class: `sku-chip ${item.sku === currentSku ? 'is-active' : ''} ${sc.counts[item.sku].counted ? 'is-done' : ''}`,
+          onclick: () => {
+            AppState.ui.stockCountSku = item.sku;
+            render();
+          },
+        },
+        sc.counts[item.sku].counted ? `✓ ${item.sku}` : item.sku
+      )
+    )
+  );
+
+  const currentItem = planogram.find((item) => item.sku === currentSku);
+  const currentCounts = sc.counts[currentItem.sku];
+  const focusCard = h(
+    'div',
+    { class: 'card' },
+    h('div', { class: 'section-title', style: 'font-size:14px' }, getSkuName(currentItem.sku)),
+    h(
+      'p',
+      { class: 'muted', style: 'margin:2px 0 8px' },
+      `SKU ${currentItem.sku} · Barcode ${getSkuBarcode(currentItem.sku)} · Par Level: ${currentItem.parLevel}`
+    ),
+    h(
+      'div',
+      { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px' },
+      renderQtyCounter(currentCounts, 'good', 'สินค้าดี', locked),
+      renderQtyCounter(currentCounts, 'damaged', 'สินค้าชำรุด', locked),
+      renderQtyCounter(currentCounts, 'testerGood', 'Tester ดี', locked),
+      renderQtyCounter(currentCounts, 'testerDamaged', 'Tester ชำรุด', locked)
+    ),
+    !locked
+      ? h(
+          'button',
+          {
+            class: `btn ${currentCounts.counted ? 'btn-outline' : 'btn-primary'}`,
+            style: 'margin-top:14px',
+            onclick: () => {
+              currentCounts.counted = true;
+              DataLayer.saveVisit(v);
+              const next = planogram.find((item) => !sc.counts[item.sku].counted);
+              AppState.ui.stockCountSku = next ? next.sku : currentItem.sku;
+              render();
+            },
+          },
+          currentCounts.counted ? '✓ ยืนยันแล้ว (นับใหม่ได้ถ้าต้องแก้)' : '✓ ยืนยันรายการนี้'
+        )
+      : null
+  );
+
+  const children = [
+    h('div', { class: 'section-title' }, '📊 นับสต๊อก & เปิด PR'),
+    searchCard,
+    h(
+      'p',
+      { class: 'section-hint' },
+      `รายการ SKU ${planogram.length} SKU · นับแล้ว ${countedTotal}/${planogram.length} · เลื่อนซ้าย/ขวาเพื่อดูรายการทั้งหมด`
+    ),
+    chipsRow,
+    focusCard,
+  ];
+
+  if (isAllSkuCounted(v)) {
+    if (!AppState.ui.stockCountRevealPr) {
+      // นับครบแล้วแต่ยังไม่กด "สร้าง PR" — ยังไม่คำนวณ/โชว์รายการแนะนำสั่งซื้อ
+      // ให้เห็น ต้องกดปุ่มนี้ก่อนถึงจะเห็น Suggest PR (กันโชว์ตัวเลขไวเกินไป
+      // ก่อนที่ Mer จะตั้งใจกดจริงๆ)
+      children.push(
+        h(
+          'button',
+          {
+            class: 'btn btn-success',
+            style: 'margin-top:4px',
+            onclick: () => {
+              AppState.ui.stockCountRevealPr = true;
+              render();
+            },
+          },
+          '🧾 สร้าง PR'
+        )
+      );
+    } else {
+      const toOrder = planogram
+        .map((item) => {
+          const counts = sc.counts[item.sku];
+          const suggested = Math.max(0, item.parLevel - counts.good);
+          const requestedQty = counts.requestedQty === null ? suggested : counts.requestedQty;
+          return { sku: item.sku, parLevel: item.parLevel, good: counts.good, requestedQty };
+        })
+        .filter((item) => item.requestedQty > 0);
+
+      if (toOrder.length === 0) {
+        children.push(
+          h('div', { class: 'info-box' }, '✓ สินค้าครบตาม Par ทุกรายการ ไม่ต้องสั่งเพิ่ม'),
+          h('button', { class: 'btn btn-success', style: 'margin-top:8px', onclick: () => openStockLockConfirm('skipPr') }, 'ยืนยันไม่ต้องสั่ง PR')
+        );
+      } else {
+        const prCard = h('div', { class: 'card' }, h('div', { class: 'section-title', style: 'font-size:14px' }, '🧾 รายการแนะนำสั่งซื้อ (Suggest PR)'));
+        toOrder.forEach((item) => {
+          prCard.appendChild(
+            h(
+              'div',
+              { class: 'summary-row' },
+              h('span', {}, `${getSkuName(item.sku)} (มี ${item.good}/${item.parLevel})`),
+              h('input', {
+                type: 'number',
+                min: '0',
+                style: 'width:70px',
+                value: item.requestedQty,
+                oninput: (e) => {
+                  sc.counts[item.sku].requestedQty = Math.max(0, Number(e.target.value) || 0);
+                  DataLayer.saveVisit(v);
+                },
+              })
+            )
+          );
+        });
+        prCard.appendChild(
+          h('button', { class: 'btn btn-success', style: 'margin-top:10px', onclick: () => openStockLockConfirm('createPr') }, '✓ ยืนยันสร้าง PR')
+        );
+        children.push(prCard);
+      }
+    }
+  }
+
+  children.push(renderStepFooter('stockCount', isStockCountStepValid(v)));
+
+  return h('div', { class: 'screen' }, children);
+}
+
+// ============================================================================
+// สแกน Barcode ด้วยกล้อง (Stock Count) — ใช้ BarcodeDetector Web API เปิดกล้อง
+// หลังเครื่องแล้วอ่าน barcode สด ๆ จากภาพ รองรับเฉพาะเบราว์เซอร์ที่มี API นี้
+// (หลัก ๆ คือ Chrome/Edge บน Android — ยังไม่รองรับ Safari/iOS ทั่วไป) ถ้า
+// เบราว์เซอร์ไม่รองรับหรือขอสิทธิ์กล้องไม่ได้ จะแจ้งให้พิมพ์ค้นหาแทนแทนที่จะพัง
+// เก็บ state ของกล้อง/loop ไว้นอก AppState เพราะเป็นแค่ handle ของ resource
+// ชั่วคราว ไม่ใช่ข้อมูลของแอป — ต้องเรียก stopBarcodeScan() ทุกครั้งที่ปิด modal
+// นี้ ไม่งั้นกล้องจะค้างเปิดอยู่เบื้องหลัง
+// ============================================================================
+
+const barcodeScanState = { stream: null, detector: null, rafId: null, active: false };
+
+function stopBarcodeScan() {
+  barcodeScanState.active = false;
+  if (barcodeScanState.rafId) cancelAnimationFrame(barcodeScanState.rafId);
+  if (barcodeScanState.stream) barcodeScanState.stream.getTracks().forEach((t) => t.stop());
+  barcodeScanState.stream = null;
+  barcodeScanState.rafId = null;
+}
+
+/**
+ * เปิดกล้องสแกน — ใช้ได้จากทุกที่ในแอปที่ต้องเลือก SKU (Stock Count, โมดัล
+ * แจ้งปัญหาต่างๆ) โดยรับ onMatch(rawValue) มาเป็นตัวตัดสินว่าเจอแล้วจะทำอะไร
+ * ต่อ (แต่ละจุดเรียกใช้ logic การจับคู่ SKU ของตัวเอง) ถ้าเปิดจากภายใน modal
+ * อื่นอยู่แล้ว (เช่นโมดัลแจ้งปัญหา) จะจำ modal เดิมไว้ใน returnModal แล้วกลับไป
+ * เปิดต่อให้อัตโนมัติหลังสแกนเสร็จ/กดปิด แทนที่จะปิด modal เดิมทิ้งไปเลย
+ */
+function openBarcodeScanner(onMatch) {
+  const returnModal = AppState.ui.modal;
+  AppState.ui.modal = { type: 'barcodeScanner', onMatch, returnModal };
+  render();
+}
+
+function closeBarcodeScanner() {
+  stopBarcodeScan();
+  const m = AppState.ui.modal;
+  AppState.ui.modal = (m && m.returnModal) || null;
+  render();
+}
+
+function handleBarcodeDetected(rawValue) {
+  const scannerModal = AppState.ui.modal;
+  stopBarcodeScan();
+  AppState.ui.modal = scannerModal.returnModal || null;
+  if (scannerModal.onMatch) scannerModal.onMatch(rawValue);
+  render();
+}
+
+async function startBarcodeScan(video, statusBox) {
+  if (!('BarcodeDetector' in window)) {
+    statusBox.textContent = 'เบราว์เซอร์นี้ไม่รองรับการสแกนด้วยกล้อง (รองรับหลักๆ บน Chrome/Android) กรุณาปิดแล้วพิมพ์ค้นหาแทน';
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    barcodeScanState.stream = stream;
+    video.srcObject = stream;
+    await video.play();
+    let formats;
+    try {
+      formats = await window.BarcodeDetector.getSupportedFormats();
+    } catch (err) {
+      formats = ['ean_13', 'ean_8', 'code_128', 'upc_a', 'upc_e'];
+    }
+    barcodeScanState.detector = new window.BarcodeDetector({ formats });
+    barcodeScanState.active = true;
+    statusBox.textContent = 'เล็งกล้องไปที่ Barcode ของสินค้า';
+
+    const tick = async () => {
+      if (!barcodeScanState.active) return;
+      try {
+        const codes = await barcodeScanState.detector.detect(video);
+        if (codes.length > 0) {
+          handleBarcodeDetected(codes[0].rawValue);
+          return;
+        }
+      } catch (err) {
+        // เฟรมบางเฟรม decode พลาดได้ปกติ (เช่นภาพเบลอ) ข้ามไปลองเฟรมถัดไป
+      }
+      barcodeScanState.rafId = requestAnimationFrame(tick);
+    };
+    tick();
+  } catch (err) {
+    statusBox.textContent = 'เปิดกล้องไม่ได้ (อาจไม่ได้อนุญาตสิทธิ์กล้อง) กรุณาปิดแล้วพิมพ์ค้นหาแทน';
+  }
+}
+
+function renderBarcodeScannerModal() {
+  const video = h('video', { autoplay: true, playsinline: true, muted: true, style: 'width:100%;border-radius:12px;background:#000;display:block' });
+  const statusBox = h('div', { class: 'muted center-text', style: 'margin-top:8px' }, 'กำลังเปิดกล้อง...');
+
+  startBarcodeScan(video, statusBox);
+
+  return h(
+    'div',
+    { class: 'modal-overlay' },
+    h(
+      'div',
+      { class: 'modal-sheet' },
+      h('div', { class: 'modal-title' }, '📷 สแกน Barcode'),
+      video,
+      statusBox,
+      h('button', { class: 'btn btn-ghost', onclick: closeBarcodeScanner }, 'ปิด')
+    )
+  );
+}
+
+/** เปิด modal เตือนก่อนล็อกสต๊อก — ใช้ร่วมกันทั้งกด "สร้าง PR" และ "ยืนยันไม่ต้องสั่ง PR"
+ *  เพราะทั้งคู่ทำให้แก้จำนวนที่นับไม่ได้อีก (Business Rule "Shelf Count Locked After PR") */
+function openStockLockConfirm(action) {
+  AppState.ui.modal = { type: 'stockLockConfirm', action };
+  render();
+}
+
+function renderStockLockConfirmModal(m) {
+  const isCreate = m.action === 'createPr';
+  return h(
+    'div',
+    { class: 'modal-overlay' },
+    h(
+      'div',
+      { class: 'modal-sheet' },
+      h('div', { class: 'modal-title' }, isCreate ? 'ยืนยันสร้าง PR?' : 'ยืนยันไม่ต้องสั่ง PR?'),
+      h('p', { class: 'muted' }, 'หลังจากนี้จะแก้ไขจำนวนที่นับสต๊อกไม่ได้อีก ต้องการดำเนินการต่อหรือไม่'),
+      h(
+        'div',
+        { class: 'btn-row' },
+        h('button', { class: 'btn btn-ghost', onclick: closeModal }, 'ยกเลิก'),
+        h(
+          'button',
+          {
+            class: 'btn btn-success',
+            onclick: () => {
+              AppState.ui.modal = null;
+              if (isCreate) {
+                handleCreatePr(getPlanogramForStore(AppState.visit.storeId));
+              } else {
+                AppState.visit.stockCount.prSkipped = true;
+                DataLayer.saveVisit(AppState.visit);
+                render();
+              }
+            },
+          },
+          'ยืนยัน'
+        )
+      )
+    )
+  );
+}
+
+function handleCreatePr(planogram) {
+  const v = AppState.visit;
+  const sc = v.stockCount;
+  const items = planogram
+    .map((item) => {
+      const counts = sc.counts[item.sku];
+      const requestedQty = counts.requestedQty === null ? Math.max(0, item.parLevel - counts.good) : counts.requestedQty;
+      // เขียนกลับเข้า state เสมอ (ไม่ใช่แค่ตอน user แก้ในช่อง input) เพื่อให้
+      // หน้าสรุปหลัง Lock (locked view) อ่านค่าที่สั่งจริงได้ถูกต้อง แม้ผู้ใช้
+      // จะไม่ได้แตะช่องแก้จำนวนเลยก็ตาม (ปล่อยตามค่าแนะนำอัตโนมัติ)
+      counts.requestedQty = requestedQty;
+      return {
+        sku: item.sku,
+        skuName: getSkuName(item.sku),
+        barcode: getSkuBarcode(item.sku),
+        parLevel: item.parLevel,
+        good: counts.good,
+        damaged: counts.damaged,
+        requestedQty,
+      };
+    })
+    .filter((item) => item.requestedQty > 0);
+
+  DataLayer.createPurchaseRequest({
+    visitId: v.visitId,
+    visitDate: v.visitDate,
+    merId: v.merId,
+    storeId: v.storeId,
+    storeName: v.storeName,
+    items,
+  }).then((pr) => {
+    sc.prCreated = true;
+    sc.prId = pr.prId;
+    sc.prNumber = pr.prNumber;
+    DataLayer.saveVisit(v);
+    render();
+  });
 }
 
 // --- Step 2: จัดการสินค้าที่ชั้นวาง — 4 checklist ย่อย (2.1-2.4) + ถ่ายรูป (2.5) ---
@@ -834,6 +1502,7 @@ function renderStep2Product() {
       label: 'จัดเติมสินค้าเรียบร้อย',
       sub: 'เติมจากสต๊อกสำรองเข้าช่องว่าง จัดเรียงตำแหน่ง/เฉดสีให้ตรงผัง Planogram หรือ Par level',
       checked: p.restockDone,
+      satisfied: p.restockDone || p.restockIssues.length > 0,
       onToggle: (val) => {
         p.restockDone = val;
         DataLayer.saveVisit(v);
@@ -890,6 +1559,7 @@ function renderStep2Product() {
       label: 'ตรวจสอบสินค้าอายุต่ำกว่าเกณฑ์แล้ว',
       sub: 'ตรวจอายุสินค้า (คนละเรื่องกับ FIFO) ว่ามีสินค้าอายุต่ำกว่าเกณฑ์ที่ขายได้หรือไม่',
       checked: p.belowThresholdChecked,
+      satisfied: p.belowThresholdChecked || p.belowThresholdIssues.length > 0,
       onToggle: (val) => {
         p.belowThresholdChecked = val;
         DataLayer.saveVisit(v);
@@ -929,6 +1599,7 @@ function renderStep2Product() {
       label: 'ราคา/ป้าย/โปรโมชั่นถูกต้อง',
       sub: 'เช็คป้ายตรง SKU และเช็คราคา/Promotion ความถูกต้อง (รวมกรณีแก้ไขแล้ว)',
       checked: p.priceOk,
+      satisfied: p.priceOk || p.priceIssues.length > 0,
       onToggle: (val) => {
         p.priceOk = val;
         DataLayer.saveVisit(v);
@@ -1006,7 +1677,7 @@ function renderStep2Product() {
     h('div', { class: 'section-title', style: 'font-size:13px' }, '2.5 ถ่ายรูปชั้นวางที่จัดเสร็จแล้ว'),
     h('p', { class: 'section-hint' }, 'บังคับอย่างน้อย 1 ภาพ หลังจัดสินค้า/POSM/ราคาเรียบร้อยแล้ว'),
     shelfPhotoGrid,
-    renderStepFooter(2, isStep2Valid(v), 'ยังมีข้อย่อยที่ยังไม่ได้ติ๊กครบ แจ้งปัญหา หรือถ่ายรูปชั้นวางให้ครบ', false)
+    renderStepFooter('product', isStep2Valid(v), 'ยังมีข้อย่อยที่ยังไม่ได้ติ๊กครบ แจ้งปัญหา หรือถ่ายรูปชั้นวางให้ครบ')
   );
 }
 
@@ -1053,6 +1724,7 @@ function renderStep3Tester() {
       label: 'เช็คปริมาณคงเหลือ และเติมเรียบร้อย',
       sub: 'เติมจากของสำรองให้ตัวที่หมด/ของไม่พอ',
       checked: t.refillDone,
+      satisfied: t.refillDone || t.flagNewTesterRequest.length > 0,
       onToggle: (val) => {
         t.refillDone = val;
         DataLayer.saveVisit(v);
@@ -1125,10 +1797,10 @@ function renderStep3Tester() {
     emptyCard,
     refillCard,
     flagCard,
-    h('div', { class: 'section-title', style: 'font-size:13px' }, 'ถ่ายภาพหลังทำงานเสร็จ'),
-    h('p', { class: 'section-hint' }, 'บังคับอย่างน้อย 1 ภาพ'),
+    h('div', { class: 'section-title', style: 'font-size:13px' }, 'ถ่ายรูปชั้น/Zone Tester หลังทำเสร็จ'),
+    h('p', { class: 'section-hint' }, 'ถ่ายให้เห็นทั้งชั้นหรือ Zone ที่วาง Tester หลังเช็ค/เติมเรียบร้อยแล้ว (บังคับอย่างน้อย 1 ภาพ)'),
     photoGrid,
-    renderStepFooter(3, isStep3Valid(v), 'ติ๊กให้เรียบร้อยหรือแจ้งขอเทสเตอร์ใหม่แทนอย่างน้อย 1 รายการ พร้อมถ่ายภาพหลังทำงานเสร็จ', false)
+    renderStepFooter('tester', isStep3Valid(v))
   );
 }
 
@@ -1143,6 +1815,7 @@ function renderStep4Posm() {
       label: 'เช็คสภาพชิ้นงาน การติดตั้ง/ปรับตำแหน่งเรียบร้อย',
       sub: 'ให้ตรงจุดที่กำหนดทันที',
       checked: p.conditionOk,
+      satisfied: p.conditionOk || (p.flagPendingInstall && p.issuePhotos.length >= 1),
       onToggle: (val) => {
         p.conditionOk = val;
         DataLayer.saveVisit(v);
@@ -1157,6 +1830,7 @@ function renderStep4Posm() {
     renderCheckRow({
       label: 'พบปัญหา POSM (ชำรุด/สื่อใหม่ยังไม่ถึง/ติดตั้งไม่ได้)',
       checked: p.flagPendingInstall,
+      required: false,
       onToggle: (val) => {
         p.flagPendingInstall = val;
         DataLayer.saveVisit(v);
@@ -1205,7 +1879,7 @@ function renderStep4Posm() {
     h('div', { class: 'section-title' }, '🖼 POSM'),
     card,
     issueCard,
-    renderStepFooter(4, isStep4Valid(v), 'ติ๊กให้เรียบร้อย หรือติ๊ก "พบปัญหา POSM" พร้อมถ่ายรูปประกอบ', false)
+    renderStepFooter('posm', isStep4Valid(v), 'ติ๊กให้เรียบร้อย หรือติ๊ก "พบปัญหา POSM" พร้อมถ่ายรูปประกอบ')
   );
 }
 
@@ -1214,31 +1888,50 @@ function renderStep5Npd() {
   const v = AppState.visit;
   const npd = v.npd;
 
-  const setAnswer = (value) => {
+  const setStatus = (value) => {
     npd.answered = true;
-    npd.hasNewNpd = value;
+    npd.status = value;
+    if (value !== 'partial') npd.missingDetail = '';
     DataLayer.saveVisit(v);
     render();
   };
 
+  const options = [
+    { value: 'full', label: '✅ เข้าครบแล้ว', activeClass: 'btn-success' },
+    { value: 'partial', label: '⚠ เข้าเพียงบางส่วน ยังขาด...', activeClass: 'btn-outline' },
+    { value: 'none', label: '❌ ยังไม่มีเข้า', activeClass: 'btn-danger' },
+  ];
+
   const card = h(
     'div',
     { class: 'card' },
-    h('p', { class: 'section-hint', style: 'margin-top:0' }, 'เช็ค NPD (New Product Development) ใหม่เข้าแล้วหรือยัง'),
+    h('p', { class: 'section-hint', style: 'margin-top:0' }, 'สินค้าใหม่ (NPD) เข้าครบตามที่ควรมีหรือยัง'),
     h(
       'div',
-      { class: 'btn-row' },
-      h(
-        'button',
-        { class: `btn ${npd.answered && npd.hasNewNpd === true ? 'btn-success' : 'btn-outline'}`, onclick: () => setAnswer(true) },
-        'Yes — เข้าแล้ว'
-      ),
-      h(
-        'button',
-        { class: `btn ${npd.answered && npd.hasNewNpd === false ? 'btn-success' : 'btn-outline'}`, onclick: () => setAnswer(false) },
-        'No — ยังไม่เข้า'
+      { style: 'display:flex;flex-direction:column;gap:8px' },
+      options.map((opt) =>
+        h(
+          'button',
+          { class: `btn ${npd.status === opt.value ? opt.activeClass : 'btn-outline'}`, onclick: () => setStatus(opt.value) },
+          opt.label
+        )
       )
-    )
+    ),
+    npd.status === 'partial'
+      ? h(
+          'div',
+          { style: 'margin-top:10px' },
+          h('label', { class: 'field-label' }, 'ระบุว่าสินค้าตัวไหน/รายการไหนยังขาด'),
+          h('textarea', {
+            placeholder: 'เช่น ยังไม่ได้รับ SKU ... เข้ามาแค่บางเฉด...',
+            value: npd.missingDetail,
+            oninput: (e) => {
+              npd.missingDetail = e.target.value;
+              DataLayer.saveVisit(v);
+            },
+          })
+        )
+      : null
   );
 
   return h(
@@ -1246,60 +1939,51 @@ function renderStep5Npd() {
     { class: 'screen' },
     h('div', { class: 'section-title' }, '🆕 NPD'),
     card,
-    renderStepFooter(5, isStep5Valid(v), 'กรุณาตอบ Yes/No ก่อนไปขั้นตอนถัดไป', false)
+    renderStepFooter('npd', isStep5Valid(v), 'กรุณาเลือกคำตอบก่อนไปขั้นตอนถัดไป (ถ้าเข้าบางส่วน ต้องระบุที่ยังขาดด้วย)')
   );
 }
 
-// --- Step 6: Photo After ---
-function renderStep6PhotosAfter() {
+// --- Step สุดท้าย: ยืนยันจบงานหลัก (ไม่มีถ่ายรูปแล้ว — แต่ละส่วนถ่ายรูปของตัวเองไปแล้ว) ---
+function renderStepConfirmMain() {
   const v = AppState.visit;
-  const grid = h('div', { class: 'photo-grid' });
-  v.photosAfter.forEach((photo, idx) => {
-    grid.appendChild(
-      h(
-        'div',
-        { class: 'photo-thumb' },
-        h('img', { src: photo }),
-        h(
-          'button',
-          {
-            class: 'photo-thumb__remove',
-            onclick: () => {
-              v.photosAfter.splice(idx, 1);
-              DataLayer.saveVisit(v);
-              render();
-            },
-          },
-          '✕'
-        )
-      )
-    );
-  });
-  grid.appendChild(
-    renderCameraButton((dataUrl) => {
-      v.photosAfter.push(dataUrl);
-      DataLayer.saveVisit(v);
-      render();
-    }, v.photosAfter.length === 0 ? 'ถ่ายภาพ' : 'ถ่ายจุดที่แก้ไข')
-  );
+  const otherSteps = getPhase2StepConfig(v).filter((s) => s.key !== 'confirmMain');
+  const allOthersDone = otherSteps.every((s) => s.validate(v));
 
-  const beforeRef = v.photosBefore[0]
-    ? h(
+  const checklist = h(
+    'div',
+    { class: 'card' },
+    otherSteps.map((s) => {
+      const done = s.validate(v);
+      return h(
         'div',
-        {},
-        h('label', { class: 'field-label' }, 'ภาพ Before (อ้างอิงมุมถ่าย)'),
-        h('div', { class: 'photo-before-ref' }, h('img', { src: v.photosBefore[0] }))
-      )
-    : null;
+        { class: 'summary-row' },
+        h('span', {}, s.label),
+        h('span', { class: `badge ${done ? 'badge-success' : 'badge-warning'}` }, done ? '✓ ผ่าน' : '⚠ ยังไม่เสร็จ')
+      );
+    })
+  );
 
   return h(
     'div',
     { class: 'screen' },
-    h('div', { class: 'section-title' }, '📷 ถ่ายภาพ After'),
-    h('p', { class: 'section-hint' }, 'ถ่ายภาพมุมเดียวกับ Before เพื่อเทียบก่อน-หลัง (บังคับอย่างน้อย 1 ภาพ)'),
-    beforeRef,
-    grid,
-    renderStepFooter(6, isStep6Valid(v), 'ต้องถ่ายภาพอย่างน้อย 1 ภาพก่อนจบงาน Phase 2', true)
+    h('div', { class: 'section-title' }, '✅ ยืนยันจบงานหลัก'),
+    h('p', { class: 'section-hint' }, 'ตรวจสอบว่าทำครบทุกส่วนแล้ว (แต่ละส่วนถ่ายรูปหลักฐานของตัวเองไปแล้ว ไม่ต้องถ่ายซ้ำอีกรอบ) ก่อนกดยืนยันจบงานหลัก'),
+    checklist,
+    h(
+      'button',
+      {
+        class: `btn ${v.mainWorkConfirmed ? 'btn-outline' : 'btn-success'}`,
+        style: 'margin-top:14px',
+        disabled: !allOthersDone,
+        onclick: () => {
+          v.mainWorkConfirmed = true;
+          DataLayer.saveVisit(v);
+          render();
+        },
+      },
+      v.mainWorkConfirmed ? '✓ ยืนยันแล้ว' : '✓ ยืนยันงานหลักเสร็จสมบูรณ์'
+    ),
+    renderStepFooter('confirmMain', isConfirmMainValid(v), !allOthersDone ? 'ยังมีส่วนที่ทำไม่ครบ (ดูเครื่องหมาย ⚠ ด้านบน) ต้องทำให้ผ่านก่อนกดยืนยันได้' : null)
   );
 }
 
@@ -1482,9 +2166,10 @@ function goToPhase4() {
 // 8) Screen: Phase 4 — สรุปงาน + เช็คเอาท์
 // ============================================================================
 
-function jumpToPhase2Step(step) {
+function jumpToPhase2Step(stepKey) {
   AppState.screen = 'PHASE2';
-  AppState.phase2Step = step;
+  const step = getPhase2StepConfig(AppState.visit).find((s) => s.key === stepKey);
+  AppState.phase2Step = step ? step.num : 1;
   render();
 }
 
@@ -1533,13 +2218,43 @@ function renderPhase4Screen() {
       h(
         'div',
         { class: 'summary-block__head' },
-        h('div', { class: 'summary-block__title' }, '📷 ภาพ Before / After'),
-        !AppState.readOnly ? editBtn(() => jumpToPhase2Step(1)) : null
+        h('div', { class: 'summary-block__title' }, '📷 ภาพ Before'),
+        !AppState.readOnly ? editBtn(() => jumpToPhase2Step('before')) : null
       ),
-      h('div', { class: 'photo-grid' }, v.photosBefore.map((p) => h('div', { class: 'photo-thumb' }, h('img', { src: p })))),
-      h('div', { class: 'photo-grid', style: 'margin-top:8px' }, v.photosAfter.map((p) => h('div', { class: 'photo-thumb' }, h('img', { src: p }))))
+      h('div', { class: 'photo-grid' }, v.photosBefore.map((p) => h('div', { class: 'photo-thumb' }, h('img', { src: p }))))
     )
   );
+
+  if (requiresStockCount(v.storeId)) {
+    const sc = v.stockCount;
+    const planogram = getPlanogramForStore(v.storeId);
+    content.appendChild(
+      h(
+        'div',
+        { class: 'summary-block' },
+        h(
+          'div',
+          { class: 'summary-block__head' },
+          h('div', { class: 'summary-block__title' }, '📊 นับสต๊อก & PR'),
+          !AppState.readOnly ? editBtn(() => jumpToPhase2Step('stockCount')) : null
+        ),
+        planogram.map((item) => {
+          const c = sc.counts[item.sku] || { good: 0, damaged: 0, testerGood: 0, testerDamaged: 0 };
+          return h(
+            'div',
+            { class: 'summary-row' },
+            h('span', {}, getSkuName(item.sku)),
+            h('strong', {}, `ดี ${c.good} / ชำรุด ${c.damaged} / Tester ดี ${c.testerGood} / Tester ชำรุด ${c.testerDamaged}`)
+          );
+        }),
+        sc.prCreated
+          ? h('div', { class: 'info-box', style: 'margin-top:8px' }, `✓ สร้าง PR แล้ว — เลขที่ ${sc.prNumber}`)
+          : sc.prSkipped
+          ? h('div', { class: 'info-box', style: 'margin-top:8px' }, '✓ ยืนยันไม่ต้องสั่ง PR รอบนี้')
+          : h('div', { class: 'error-box', style: 'margin-top:8px' }, '⚑ ยังไม่ได้สร้าง/ยืนยัน PR')
+      )
+    );
+  }
 
   content.appendChild(
     h(
@@ -1549,7 +2264,7 @@ function renderPhase4Screen() {
         'div',
         { class: 'summary-block__head' },
         h('div', { class: 'summary-block__title' }, '📦 จัดการสินค้าที่ชั้นวาง'),
-        !AppState.readOnly ? editBtn(() => jumpToPhase2Step(2)) : null
+        !AppState.readOnly ? editBtn(() => jumpToPhase2Step('product')) : null
       ),
       h('div', { class: 'summary-row' }, h('span', {}, 'เติม/จัดเรียง'), h('strong', {}, v.product.restockDone ? 'เรียบร้อย' : 'มีรายการที่ต้องติดตาม')),
       h('div', { class: 'summary-row' }, h('span', {}, 'FIFO / วันหมดอายุ'), h('strong', {}, v.product.fifoDone ? 'เรียบร้อย' : 'ยังไม่ได้เช็ค')),
@@ -1571,7 +2286,7 @@ function renderPhase4Screen() {
         'div',
         { class: 'summary-block__head' },
         h('div', { class: 'summary-block__title' }, '💄 Tester'),
-        !AppState.readOnly ? editBtn(() => jumpToPhase2Step(3)) : null
+        !AppState.readOnly ? editBtn(() => jumpToPhase2Step('tester')) : null
       ),
       v.tester.emptySkus.length > 0
         ? h('div', { class: 'summary-row' }, h('span', {}, 'พบว่าหมดก่อนเติม'), h('strong', {}, v.tester.emptySkus.map(getSkuName).join(', ')))
@@ -1590,7 +2305,7 @@ function renderPhase4Screen() {
         'div',
         { class: 'summary-block__head' },
         h('div', { class: 'summary-block__title' }, '🖼 POSM'),
-        !AppState.readOnly ? editBtn(() => jumpToPhase2Step(4)) : null
+        !AppState.readOnly ? editBtn(() => jumpToPhase2Step('posm')) : null
       ),
       v.posm.flagPendingInstall
         ? h(
@@ -1611,9 +2326,20 @@ function renderPhase4Screen() {
         'div',
         { class: 'summary-block__head' },
         h('div', { class: 'summary-block__title' }, '🆕 NPD'),
-        !AppState.readOnly ? editBtn(() => jumpToPhase2Step(5)) : null
+        !AppState.readOnly ? editBtn(() => jumpToPhase2Step('npd')) : null
       ),
-      h('div', { class: 'summary-row' }, h('span', {}, 'NPD ใหม่เข้าแล้วหรือยัง'), h('strong', {}, v.npd.answered ? (v.npd.hasNewNpd ? 'Yes — เข้าแล้ว' : 'No — ยังไม่เข้า') : 'ยังไม่ตอบ'))
+      h(
+        'div',
+        { class: 'summary-row' },
+        h('span', {}, 'สินค้าใหม่ (NPD) เข้าครบหรือยัง'),
+        h(
+          'strong',
+          {},
+          !v.npd.answered
+            ? 'ยังไม่ตอบ'
+            : { full: '✅ เข้าครบแล้ว', partial: `⚠ เข้าบางส่วน — ${v.npd.missingDetail}`, none: '❌ ยังไม่มีเข้า' }[v.npd.status]
+        )
+      )
     )
   );
 
@@ -1779,6 +2505,8 @@ function renderModal() {
     addAdHoc: renderAddAdHocModal,
     confirmSubmit: renderConfirmSubmitModal,
     resetConfirm: renderResetConfirmModal,
+    stockLockConfirm: renderStockLockConfirmModal,
+    barcodeScanner: renderBarcodeScannerModal,
   };
   const node = renderers[m.type] ? renderers[m.type](m) : null;
   if (node) root.appendChild(node);
@@ -1820,12 +2548,68 @@ function renderManualCheckinModal(m) {
 }
 
 /**
- * modal แจ้งปัญหา 3 แบบด้านล่าง (เติมสินค้า/อายุต่ำกว่าเกณฑ์/ราคา) ใช้ pattern
- * "เพิ่มได้หลาย SKU ต่อเนื่องแบบเร็ว" เหมือนกัน: เลือก/พิมพ์ SKU แล้วกด "+ เพิ่ม"
- * ครั้งเดียวก็ push เข้า visit ทันที (ไม่ต้องกรอก note ทีละตัว) โดยไม่ปิด modal
- * ทำให้ยิงเพิ่มได้เรื่อยๆ ต่อเนื่อง จนกว่าจะกด "เสร็จสิ้น" — ตัด note รายตัวออก
- * เพื่อความเร็ว (จำลองความเร็วแบบ scan บาร์โค้ด/กรอกรหัสต่อเนื่อง)
+ * modal แจ้งปัญหา 5 แบบด้านล่าง (เติมสินค้า/อายุต่ำกว่าเกณฑ์/ราคา/Tester หมด/
+ * ขอ Tester ใหม่) ใช้ pattern "เพิ่มได้หลาย SKU ต่อเนื่องแบบเร็ว" เหมือนกัน:
+ * เลือก/พิมพ์/สแกน SKU แล้วกด "+ เพิ่ม" ครั้งเดียวก็ push เข้า visit ทันที
+ * (ไม่ต้องกรอก note ทีละตัว) โดยไม่ปิด modal ทำให้ยิงเพิ่มได้เรื่อยๆ ต่อเนื่อง
+ * จนกว่าจะกด "เสร็จสิ้น" — ตัด note รายตัวออกเพื่อความเร็ว
  */
+
+/** แถวสแกน/ค้นหา SKU แบบย่อ แทรกเหนือ dropdown เลือก SKU ในโมดัลแจ้งปัญหาทุกอัน
+ *  เจอแล้วตั้ง m.selectedSku ให้เลย ผู้ใช้ค่อยกด "+ เพิ่ม" เองอีกที เหมือน flow
+ *  เดิมทุกประการ แค่เพิ่มช่องทางกรอกให้เร็วขึ้น (พิมพ์ค้นหา หรือสแกนกล้องจริง) */
+function renderSkuScanRow(m) {
+  const doSearch = () => {
+    const match = findSkuInList(SKU_CATALOG, m.skuSearchTerm);
+    if (match) {
+      m.selectedSku = match.sku;
+      m.skuSearchTerm = '';
+      m.skuSearchError = null;
+    } else {
+      m.skuSearchError = 'ไม่พบ SKU/Barcode นี้';
+    }
+    render();
+  };
+  return h(
+    'div',
+    { style: 'margin-bottom:10px' },
+    h(
+      'div',
+      { class: 'btn-row' },
+      h('input', {
+        type: 'text',
+        placeholder: 'สแกน/พิมพ์ Barcode หรือ SKU',
+        value: m.skuSearchTerm || '',
+        oninput: (e) => {
+          m.skuSearchTerm = e.target.value;
+        },
+        onkeydown: (e) => {
+          if (e.key === 'Enter') doSearch();
+        },
+      }),
+      h('button', { class: 'btn btn-outline btn-sm', style: 'width:auto', onclick: doSearch }, '🔍'),
+      h(
+        'button',
+        {
+          class: 'btn btn-outline btn-sm',
+          style: 'width:auto',
+          onclick: () =>
+            openBarcodeScanner((rawValue) => {
+              const match = findSkuInList(SKU_CATALOG, rawValue);
+              if (match) {
+                m.selectedSku = match.sku;
+                m.skuSearchError = null;
+              } else {
+                m.skuSearchError = `ไม่พบ SKU/Barcode ${rawValue}`;
+              }
+            }),
+        },
+        '📷'
+      )
+    ),
+    m.skuSearchError ? h('div', { class: 'error-box', style: 'margin-top:6px' }, m.skuSearchError) : null
+  );
+}
 
 function openRestockIssueModal() {
   AppState.ui.modal = { type: 'restockIssue', restockType: 'no_stock', selectedSku: SKU_CATALOG[0].sku };
@@ -1848,6 +2632,7 @@ function renderRestockIssueModal(m) {
         h('option', { value: 'no_stock', selected: m.restockType === 'no_stock' }, 'ไม่มีของให้เติม/ของหมด'),
         h('option', { value: 'shelf_full', selected: m.restockType === 'shelf_full' }, 'ชั้นวางไม่พอ (ของเก่าขายไม่หมด)')
       ),
+      renderSkuScanRow(m),
       h('label', { class: 'field-label' }, 'เลือก SKU แล้วกด + เพิ่ม (เพิ่มได้หลายรายการต่อเนื่อง)'),
       h(
         'div',
@@ -1920,8 +2705,10 @@ function renderBelowThresholdModal(m) {
         label: 'หมดอายุแล้ว (ดึงออกจากชั้นแล้ว)',
         sub: 'ใช้กับทุก SKU ที่เพิ่มด้านล่างนี้ — ถ้าติ๊ก ต้องแจ้งร้านให้เปิด CN ด้วย',
         checked: m.expired,
+        required: false,
         onToggle: (val) => { m.expired = val; render(); },
       }),
+      renderSkuScanRow(m),
       h('label', { class: 'field-label' }, 'เลือก SKU แล้วกด + เพิ่ม (เพิ่มได้หลายรายการต่อเนื่อง)'),
       h(
         'div',
@@ -1990,6 +2777,7 @@ function renderTesterEmptyModal(m) {
       'div',
       { class: 'modal-sheet' },
       h('div', { class: 'modal-title' }, 'บันทึก Tester ที่พบว่าหมดก่อนเติม'),
+      renderSkuScanRow(m),
       h('label', { class: 'field-label' }, 'เลือก SKU แล้วกด + เพิ่ม (เพิ่มได้หลายรายการต่อเนื่อง)'),
       h(
         'div',
@@ -2059,6 +2847,7 @@ function renderTesterFlagModal(m) {
       { class: 'modal-sheet' },
       h('div', { class: 'modal-title' }, 'ขอเทสเตอร์ใหม่ / เบิกรอบหน้า'),
       h('p', { class: 'muted' }, 'ใช้เมื่อ Tester หมดและไม่มีของสำรองให้เติม'),
+      renderSkuScanRow(m),
       h('label', { class: 'field-label' }, 'เลือก SKU แล้วกด + เพิ่ม (เพิ่มได้หลายรายการต่อเนื่อง)'),
       h(
         'div',
@@ -2127,6 +2916,7 @@ function renderPriceFlagModal(m) {
       'div',
       { class: 'modal-sheet' },
       h('div', { class: 'modal-title' }, 'แจ้งราคาไม่ตรง/ผิดปกติ'),
+      renderSkuScanRow(m),
       h('label', { class: 'field-label' }, 'เลือก SKU'),
       h(
         'select',
@@ -2195,15 +2985,22 @@ function renderInfoMissingModal(m) {
   );
 }
 
-function renderStepGateModal() {
+function renderStepGateModal(m) {
+  const isStockGate = m && m.gateKey === 'stockCount';
   return h(
     'div',
     { class: 'modal-overlay' },
     h(
       'div',
       { class: 'modal-sheet' },
-      h('div', { class: 'modal-title' }, 'ต้องถ่ายภาพ Before ก่อน'),
-      h('p', { class: 'muted' }, 'กรุณาถ่ายภาพ Before ให้ครบอย่างน้อย 1 ภาพก่อน จึงจะไปขั้นตอนอื่นได้'),
+      h('div', { class: 'modal-title' }, isStockGate ? 'ต้องนับสต๊อก & PR ก่อน' : 'ต้องถ่ายภาพ Before ก่อน'),
+      h(
+        'p',
+        { class: 'muted' },
+        isStockGate
+          ? 'ต้องนับสต๊อกให้ครบและสร้าง PR (หรือยืนยันไม่ต้องสั่ง) ก่อน จึงจะไปขั้นตอนอื่นได้ — ป้องกันนับสต๊อกหลังเริ่มจัดเรียง/เติมของแล้ว ซึ่งจะได้ตัวเลขไม่ตรงสภาพจริง'
+          : 'กรุณาถ่ายภาพ Before ให้ครบอย่างน้อย 1 ภาพก่อน จึงจะไปขั้นตอนอื่นได้'
+      ),
       h('button', { class: 'btn btn-primary', onclick: closeModal }, 'เข้าใจแล้ว')
     )
   );
@@ -2297,6 +3094,7 @@ function render() {
     LOGIN: renderLoginScreen,
     STORE_LIST: renderStoreListScreen,
     PROFILE: renderProfileScreen,
+    PR_REPORT: renderPrReportScreen,
     CHECKIN: renderCheckinScreen,
     PHASE2: renderPhase2Screen,
     PHASE3: renderPhase3Screen,

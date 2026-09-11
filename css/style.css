@@ -410,6 +410,108 @@ button {
   color: var(--color-danger);
 }
 
+/* ---------------------------- SKU chips (Stock Count scan/search) ---------------------------- */
+
+.sku-chip {
+  flex-shrink: 0;
+  border: 1.5px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sku-chip.is-active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: #eaf2ff;
+}
+
+.sku-chip.is-done {
+  border-color: var(--color-success);
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+/* ---------------------------- PR Report card ---------------------------- */
+
+.pr-stat-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.pr-stat {
+  flex: 1;
+  background: var(--color-gray-bg);
+  border-radius: 10px;
+  padding: 10px 8px;
+  text-align: center;
+  min-width: 0;
+}
+
+.pr-stat__value {
+  font-size: 20px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-stat__label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.pr-item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pr-item-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.pr-item-chip {
+  flex-shrink: 0;
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-weight: 800;
+  font-size: 12px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: center;
+  min-width: 56px;
+}
+
+.pr-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.pr-item-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.pr-item-qty {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.pr-item-qty__value {
+  font-size: 20px;
+  font-weight: 800;
+}
+
 /* ---------------------------- Checklist rows ---------------------------- */
 
 .check-row {
@@ -470,6 +572,11 @@ select {
   background: #fff;
   color: var(--color-text);
   font-family: inherit;
+}
+
+input:disabled {
+  background: var(--color-gray-bg);
+  color: var(--color-text-muted);
 }
 
 input:focus,

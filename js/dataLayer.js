@@ -23,6 +23,7 @@ const STORAGE_KEYS = {
   AD_HOC_STORES: 'mrv_adhoc_stores', // { [merId]: { [dateISO]: [storeId, ...] } } — สาขาที่ Mer Key In เองกรณีมีงานแทรก
   VISITS: 'mrv_visits', // { [visitId]: visitObject }
   MER_PROFILES: 'mrv_mer_profiles', // { [merId]: { displayName, phone } } — ข้อมูลโปรไฟล์ที่ Mer แก้ไขเอง
+  PURCHASE_REQUESTS: 'mrv_purchase_requests', // { [prId]: prObject } — PR ที่สร้างจาก Stock Count (เฉพาะสาขาที่ requiresStockCount)
 };
 
 const STATUS_SORT_ORDER = { in_progress: 0, pending: 1, completed: 2 };
@@ -87,7 +88,6 @@ function createEmptyVisit(storeId, storeName) {
     checkinPhoto: null, // ภาพหน้าสาขา (ภายนอก) ถ่ายตอนเช็คอิน ใช้เป็นหลักฐานว่าอยู่หน้าร้านจริง
     checkOut: null,
     photosBefore: [],
-    photosAfter: [],
     // Step 2: จัดการสินค้าที่ชั้นวาง — 5 ขั้นย่อย (2.1-2.4 checklist + 2.5 ถ่ายรูป)
     // ตัด list SKU/par level ออกจาก 2.1 แล้ว (เดิมมี items สำหรับกรอกจำนวนต่อ SKU)
     // — ทุกขั้นย่อยตอนนี้เป็นแค่ checkbox + ปุ่มแจ้งปัญหาแบบเพิ่มได้หลาย SKU
@@ -120,12 +120,33 @@ function createEmptyVisit(storeId, storeName) {
       flagPendingInstall: false, // พบปัญหา POSM (ชำรุด/สื่อใหม่ยังไม่ถึง/ติดตั้งไม่ได้)
       issuePhotos: [], // ภาพ POSM ที่มีปัญหา (บังคับอย่างน้อย 1 ภาพ ถ้าติ๊ก flagPendingInstall)
     },
-    // Step 5: NPD — เช็คสินค้าใหม่เข้าแล้วหรือยัง (Yes/No)
+    // Step 5: NPD — เช็คสินค้าใหม่เข้าครบหรือยัง (3 ตัวเลือก แทน Yes/No เดิม)
     npd: {
       answered: false,
-      hasNewNpd: null, // true = Yes, false = No
+      status: null, // 'full' | 'partial' | 'none'
+      missingDetail: '', // ระบุว่าตัวไหน/รายการไหนยังขาด — บังคับกรอกถ้า status === 'partial'
+    },
+    // "นับสต๊อก & PR" — แทรกก่อน step จัดการสินค้าที่ชั้นวาง เฉพาะสาขาที่
+    // requiresStockCount() คืน true (ปัจจุบันมีแค่ Tofu) ต้องนับก่อนไปเติม/จัด
+    // เรียงสินค้า ไม่งั้นตัวเลขจะไม่ตรงสภาพจริงตอนมาถึง — เก็บไว้ในทุก visit
+    // เหมือนกันแม้สาขาอื่นจะไม่ได้ใช้ ก็ไม่กระทบอะไร (แค่เป็น field ว่างเปล่า)
+    // นับทีละ SKU ผ่านช่องค้นหา/สแกน แล้วกด "ยืนยันรายการนี้" ต่อตัว (ตั้ง
+    // counted = true) — allCounted ของทั้ง step คำนวณสดจาก counted ครบทุก SKU
+    // ใน planogram เสมอ (ดู isStockCountStepValid) ไม่เก็บเป็น field แยก
+    stockCount: {
+      counts: getPlanogramForStore(storeId).reduce((acc, item) => {
+        acc[item.sku] = { good: 0, damaged: 0, testerGood: 0, testerDamaged: 0, requestedQty: null, counted: false };
+        return acc;
+      }, {}),
+      prCreated: false,
+      prSkipped: false, // Mer ยืนยันว่าของครบตาม Par ไม่ต้องสั่งเพิ่ม (ไม่ต้องสร้าง PR)
+      prId: null,
+      prNumber: null,
     },
     unstructuredNotes: [],
+    // step สุดท้ายของ Phase 2 (แทนที่ "ถ่ายภาพ After" เดิมที่ตัดออกเพราะซ้ำซ้อนกับ
+    // รูปที่แต่ละส่วนถ่ายเองอยู่แล้ว) — ต้องกดยืนยันเองหลังทุกส่วนผ่านครบ
+    mainWorkConfirmed: false,
     sentToGroupLine: false,
     status: 'in_progress',
     phaseCompleted: 1,
@@ -152,7 +173,9 @@ function isVisitSchemaCurrent(visit) {
     Array.isArray(visit.tester.afterPhotos) &&
     Array.isArray(visit.tester.emptySkus) &&
     visit.posm &&
-    Array.isArray(visit.posm.issuePhotos)
+    Array.isArray(visit.posm.issuePhotos) &&
+    visit.stockCount &&
+    typeof visit.stockCount.counts === 'object'
   );
 }
 
@@ -331,6 +354,34 @@ const DataLayer = {
     if (profile.password) return profile.password;
     const mer = getMerById(merId);
     return mer ? mer.password : null;
+  },
+
+  // ---------- Purchase Request (สร้างจาก Stock Count เฉพาะสาขาที่ requiresStockCount) ----------
+  /** เลขที่ PR รูปแบบ PR-YYYYMMDD-NNN นับต่อวัน ไม่ผูกกับสาขา/Mer */
+  createPurchaseRequest({ visitId, visitDate, merId, storeId, storeName, items }) {
+    const all = readJson(STORAGE_KEYS.PURCHASE_REQUESTS, {});
+    const dateKey = ScheduleDataLayer.toDateISO(new Date()).replace(/-/g, '');
+    const countToday = Object.values(all).filter((pr) => pr.prNumber.startsWith(`PR-${dateKey}`)).length;
+    const pr = {
+      prId: generateId('pr'),
+      prNumber: `PR-${dateKey}-${String(countToday + 1).padStart(3, '0')}`,
+      visitId,
+      visitDate,
+      merId,
+      storeId,
+      storeName,
+      createdAt: new Date().toISOString(),
+      items, // [{ sku, skuName, barcode, parLevel, good, damaged, requestedQty }]
+    };
+    all[pr.prId] = pr;
+    writeJson(STORAGE_KEYS.PURCHASE_REQUESTS, all);
+    return Promise.resolve(pr);
+  },
+
+  /** รายการ PR ทั้งหมด (ทุกสาขา/ทุก Mer) เรียงใหม่สุดก่อน — ใช้กับหน้า "รายงาน PR" */
+  getAllPurchaseRequests() {
+    const all = readJson(STORAGE_KEYS.PURCHASE_REQUESTS, {});
+    return Promise.resolve(Object.values(all).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
   },
 
   /**
